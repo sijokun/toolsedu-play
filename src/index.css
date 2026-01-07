@@ -720,6 +720,8 @@ input:focus {
   flex-direction: column;
   gap: 12px;
   padding: 20px;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
 .join-form input {
@@ -749,6 +751,8 @@ input:focus {
   border-radius: 8px;
   background: #22c55e;
   box-shadow: 0 4px 0 #16a34a;
+  margin: 0 0 5px 0;
+  /* margin-bottom: 10px; */
 }
 
 .join-form button:hover {
