@@ -36,6 +36,7 @@ function Player() {
   const [roundEndTimestamp, setRoundEndTimestamp] = useState(null)
   const [answered, setAnswered] = useState(false)
   const [correctAnswer, setCorrectAnswer] = useState(null)
+  const [joining, setJoining] = useState(false)
   const wsRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
   const timerIntervalRef = useRef(null)
@@ -109,15 +110,18 @@ function Player() {
 
   const joinGame = async (e) => {
     e.preventDefault()
+    if (joining) return
+    setJoining(true)
+    setError(null)
     try {
       const response = await fetch(
         `${API_URL}/join/${gameCode.trim().toUpperCase()}?player_name=${encodeURIComponent(playerName)}`
       , { method: 'POST' })
-      
+
       if (!response.ok) {
         throw new Error('Failed to join game')
       }
-      
+
       const data = await response.json()
       setPlayer(data)
       setJoined(true)
@@ -129,6 +133,7 @@ function Player() {
       connectWebSocket(code, data.uid)
     } catch (err) {
       setError('Failed to join game: ' + err.message)
+      setJoining(false)
     }
   }
 
@@ -162,8 +167,13 @@ function Player() {
     }
 
     ws.onmessage = (event) => {
-      const message = JSON.parse(event.data)
-      handleMessage(message)
+      if (!event.data) return
+      try {
+        const message = JSON.parse(event.data)
+        handleMessage(message)
+      } catch (e) {
+        console.log('Non-JSON message:', event.data)
+      }
     }
 
     ws.onerror = (err) => {
@@ -187,9 +197,8 @@ function Player() {
             // After max retries, assume game doesn't exist
             console.log('Connection failed after max retries - game not found')
             setError('Game not found. Redirecting...')
-            shouldConnectRef.current = false
             setTimeout(() => {
-              navigate('/')
+              leaveGame()
             }, 1500)
             return
           }
@@ -302,10 +311,45 @@ function Player() {
     }
   }
 
+  const leaveGame = () => {
+    shouldConnectRef.current = false
+    if (wsRef.current) {
+      wsRef.current.close(1000, 'Player leaving')
+      wsRef.current = null
+    }
+    if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
+    setGame(null)
+    setJoined(false)
+    setPlayer(null)
+    setGameCode('')
+    setPlayerName('')
+    setAnswer('')
+    setStatus('')
+    setError(null)
+    setFinalScores(null)
+    setRoundTimer(null)
+    setRoundEndTimestamp(null)
+    setAnswered(false)
+    setCorrectAnswer(null)
+    setJoining(false)
+    wsConnectedRef.current = false
+    hasEverConnectedRef.current = false
+    retryCountRef.current = 0
+    window.history.replaceState(null, '', '/player')
+  }
+
   const submitAnswer = (e) => {
     e.preventDefault()
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && answer.trim()) {
       wsRef.current.send(answer.trim())
+      setStatus('Answer submitted...')
+    }
+  }
+
+  const submitChoice = (option) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(option)
       setStatus('Answer submitted...')
     }
   }
@@ -341,7 +385,7 @@ function Player() {
           </div>
         </div>
 
-        <button className="player-leave-btn" onClick={() => navigate('/')}>Back to Menu</button>
+        {/*<button className="player-leave-btn" onClick={leaveGame}>Back to Menu</button>*/}
       </div>
     )
   }
@@ -371,8 +415,8 @@ function Player() {
             required
             style={{ textTransform: 'none' }}
           />
-          <button type="submit">Enter</button>
-          <button type="button" className="back-btn" onClick={() => navigate('/')}>Back</button>
+          <button type="submit" disabled={joining}>{joining ? 'Joining...' : 'Enter'}</button>
+          {/*<button type="button" className="back-btn" onClick={leaveGame}>Back</button>*/}
         </form>
         
         {error && <div className="player-status error">{error}</div>}
@@ -435,12 +479,30 @@ function Player() {
             <div className="player-question">
               {game.questions[game.round]}
             </div>
-            
+
             {answered ? (
               <div className="player-correct-badge">
                 <div className="checkmark">✓</div>
                 <div className="text">Correct! Waiting for others...</div>
               </div>
+            ) : game.game_type === 'multiple-choice' && game.data?.options ? (
+              <>
+                {status && (status.toLowerCase().includes('wrong') || status.toLowerCase().includes('incorrect')) && (
+                  <div className="player-status error">{status}</div>
+                )}
+                <div className="mc-options-player">
+                  {game.data.options[game.round]?.map((option, idx) => (
+                    <button
+                      key={idx}
+                      className={`mc-option-btn mc-color-${idx % 4}`}
+                      onClick={() => submitChoice(option)}
+                    >
+                      <span className="mc-option-label">{String.fromCharCode(65 + idx)}</span>
+                      <span className="mc-option-text">{option}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
             ) : (
               <>
                 {status && (status.toLowerCase().includes('wrong') || status.toLowerCase().includes('incorrect')) && (
@@ -493,7 +555,7 @@ function Player() {
         )}
       </div>
 
-      <button className="player-leave-btn" onClick={() => navigate('/')}>Leave Game</button>
+      <button className="player-leave-btn" onClick={leaveGame}>Leave Game</button>
     </div>
   )
 }

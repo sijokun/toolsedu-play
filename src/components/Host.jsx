@@ -170,8 +170,13 @@ function Host() {
     }
 
     ws.onmessage = (event) => {
-      const message = JSON.parse(event.data)
-      handleMessage(message)
+      if (!event.data) return
+      try {
+        const message = JSON.parse(event.data)
+        handleMessage(message)
+      } catch (e) {
+        console.log('Non-JSON message:', event.data)
+      }
     }
 
     ws.onerror = (err) => {
@@ -401,15 +406,26 @@ function Host() {
 
           <div className="host-game-layout">
             <div className="host-main">
-              {game.data && <Crossword data={game.data} answers={game.answers} currentWordIndex={game.round} />}
+              {game.game_type === 'multiple-choice' && game.data?.options ? (
+                <div className="mc-options-host">
+                  {game.data.options[game.round]?.map((option, idx) => (
+                    <div key={idx} className={`mc-option-card mc-color-${idx % 4}`}>
+                      <span className="mc-option-label">{String.fromCharCode(65 + idx)}</span>
+                      <span className="mc-option-text">{option}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                game.data && <Crossword data={game.data} answers={game.answers} currentWordIndex={game.round} />
+              )}
             </div>
-            
+
             <div className="host-sidebar">
               <div className="top-players">
                 <h3>Top Players</h3>
                 {top3Players.map((player, idx) => (
-                  <div 
-                    key={player.uid} 
+                  <div
+                    key={player.uid}
                     className={`top-player-item ${idx === 0 ? 'gold' : idx === 1 ? 'silver' : 'bronze'}`}
                   >
                     <span>{player.name}</span>
@@ -437,15 +453,26 @@ function Host() {
 
           <div className="host-game-layout">
             <div className="host-main">
-              {game.data && <Crossword data={game.data} answers={game.answers} />}
+              {game.game_type === 'multiple-choice' && game.data?.options ? (
+                <div className="mc-options-host">
+                  {game.data.options[game.round]?.map((option, idx) => (
+                    <div key={idx} className={`mc-option-card mc-color-${idx % 4} ${option === correctAnswer ? 'mc-correct' : ''}`}>
+                      <span className="mc-option-label">{String.fromCharCode(65 + idx)}</span>
+                      <span className="mc-option-text">{option}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                game.data && <Crossword data={game.data} answers={game.answers} />
+              )}
             </div>
-            
+
             <div className="host-sidebar">
               <div className="top-players">
                 <h3>Top Players</h3>
                 {top3Players.map((player, idx) => (
-                  <div 
-                    key={player.uid} 
+                  <div
+                    key={player.uid}
                     className={`top-player-item ${idx === 0 ? 'gold' : idx === 1 ? 'silver' : 'bronze'}`}
                   >
                     <span>{player.name}</span>
