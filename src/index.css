@@ -76,10 +76,7 @@ button:disabled {
 }
 
 button.btn-green {
-  background: #22c55e;
-  box-shadow: 0 4px 0 #16a34a;
-
-    background: #f77e19;
+  background: #f77e19;
   box-shadow: 0 4px 0 #e07117;
 }
 
@@ -870,11 +867,11 @@ input:focus {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 24px;
+  padding: 28px;
   border-radius: 12px;
   color: white;
   font-weight: 700;
-  font-size: 20px;
+  font-size: 26px;
   transition: transform 0.2s, box-shadow 0.2s;
 }
 
@@ -952,5 +949,355 @@ input:focus {
 
 .mc-option-btn:active {
   transform: translateY(2px);
+}
+
+/* ============================================
+   END GAME BUTTON
+   ============================================ */
+
+/* ============================================
+   WORD BANK (host sidebar)
+   ============================================ */
+
+.word-bank {
+  background: #f9fafb;
+  border-radius: 10px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  margin-top: 12px;
+}
+
+.word-bank h3 {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+
+.word-bank-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.word-bank-item {
+  padding: 8px 16px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #374151;
+  text-transform: uppercase;
+}
+
+/* Word bank below the question box for text-only game types */
+.word-bank.word-bank-main {
+  margin: 0 0 16px 0;
+  padding: 20px 24px;
+  text-align: center;
+}
+
+.word-bank.word-bank-main .word-bank-list {
+  justify-content: center;
+  gap: 10px;
+}
+
+.word-bank.word-bank-main .word-bank-item {
+  padding: 10px 20px;
+  font-size: 18px;
+  border-radius: 10px;
+  box-shadow: 0 2px 0 #e5e7eb;
+}
+
+.btn-end-game {
+  margin-top: 16px;
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 12px;
+  background: #ef4444;
+  box-shadow: 0 3px 0 #dc2626;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.btn-end-game:hover {
+  box-shadow: 0 5px 0 #dc2626;
+}
+
+/* ============================================
+   SCRAMBLE
+   ============================================ */
+
+.scramble-host {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  padding: 40px;
+}
+
+.scramble-letters {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.scramble-tile {
+  width: 90px;
+  height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #785feb;
+  color: white;
+  font-size: 42px;
+  font-weight: 900;
+  border-radius: 14px;
+  box-shadow: 0 5px 0 #5f48c9;
+}
+
+.scramble-player {
+  margin-bottom: 20px;
+}
+
+.scramble-letters-player {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.scramble-tile-player {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  color: #785feb;
+  font-size: 24px;
+  font-weight: 900;
+  border-radius: 10px;
+}
+
+/* ============================================
+   FILL THE GAPS
+   ============================================ */
+
+.fill-gaps-host {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  padding: 40px;
+}
+
+.fill-gaps-sentence {
+  font-size: 40px;
+  font-weight: 700;
+  color: #333;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.fill-gaps-blank {
+  color: #785feb;
+  padding: 0 4px;
+  font-weight: 900;
+}
+
+.fill-gaps-player {
+  background: white;
+  color: #333;
+  padding: 20px;
+  border-radius: 12px;
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+
+.fill-gaps-blank-player {
+  color: #785feb;
+  padding: 0 2px;
+  font-weight: 900;
+}
+
+/* ============================================
+   MATCHING
+   ============================================ */
+
+.matching-host {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 40px;
+  gap: 30px;
+}
+
+.matching-left-term {
+  font-size: 44px;
+  font-weight: 900;
+  color: #785feb;
+  text-align: center;
+  padding: 24px 40px;
+  background: #f0ecff;
+  border-radius: 12px;
+}
+
+.matching-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
+.matching-option-card {
+  padding: 20px 32px;
+  background: #f3f4f6;
+  border-radius: 10px;
+  font-size: 24px;
+  font-weight: 700;
+  color: #333;
+  transition: transform 0.2s;
+}
+
+.matching-option-card.mc-correct {
+  outline: 3px solid #22c55e;
+  background: #dcfce7;
+  color: #166534;
+}
+
+.matching-options-player {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.matching-option-btn {
+  width: 100%;
+  padding: 16px 20px;
+  border: none;
+  border-radius: 10px;
+  background: white;
+  color: #333;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+  text-align: center;
+  text-transform: none;
+  letter-spacing: 0;
+  margin: 0;
+  box-shadow: 0 3px 0 #d1d5db;
+  transition: transform 0.1s;
+}
+
+.matching-option-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 0 #d1d5db;
+}
+
+.matching-option-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #d1d5db;
+}
+
+.matching-used {
+  opacity: 0.35;
+  text-decoration: line-through;
+  pointer-events: none;
+}
+
+.matching-option-btn.matching-used {
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   WORD SEARCH
+   ============================================ */
+
+.word-search-host {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  padding: 20px;
+}
+
+.word-search-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: #e5e7eb;
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.word-search-row {
+  display: flex;
+  gap: 2px;
+}
+
+.word-search-cell {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  font-size: 16px;
+  font-weight: 800;
+  color: #333;
+  text-transform: uppercase;
+}
+
+.word-search-player {
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.word-search-row-player {
+  display: flex;
+  gap: 1px;
+  justify-content: center;
+}
+
+.word-search-cell-player {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.9);
+  font-size: 13px;
+  font-weight: 800;
+  color: #333;
+  text-transform: uppercase;
+  border-radius: 3px;
+}
+
+/* ============================================
+   GENERIC QUESTION (fallback)
+   ============================================ */
+
+.generic-question {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  padding: 40px;
+  font-size: 40px;
+  font-weight: 700;
+  color: #333;
+  text-align: center;
 }
 

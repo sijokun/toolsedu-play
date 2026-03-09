@@ -35,6 +35,7 @@ function Host() {
   const [roundTimer, setRoundTimer] = useState(null)
   const [roundEndTimestamp, setRoundEndTimestamp] = useState(null)
   const [correctAnswer, setCorrectAnswer] = useState(null)
+  const [roundQuestion, setRoundQuestion] = useState(null)
   const wsRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
   const timerIntervalRef = useRef(null)
@@ -50,21 +51,21 @@ function Host() {
     if (params.gameCode && params.uid) {
       shouldConnectRef.current = true
       connectionAttempts.current = 0
-      isInitialConnection.current = false // We're reconnecting to existing game
+      isInitialConnection.current = false
       setGameCode(params.gameCode)
       setHostUid(params.uid)
       setStatus('Connecting...')
       connectWebSocket(params.gameCode, params.uid)
-    } 
+    }
     // Otherwise create a new game
     else if (!isCreatingRef.current) {
       isCreatingRef.current = true
       shouldConnectRef.current = true
       connectionAttempts.current = 0
-      isInitialConnection.current = true // This is a brand new game creation
+      isInitialConnection.current = true
       createGame()
     }
-    
+
     return () => {
       shouldConnectRef.current = false
       if (wsRef.current) {
@@ -86,21 +87,17 @@ function Host() {
   // Live timer effect
   useEffect(() => {
     if (roundEndTimestamp) {
-      // Clear any existing interval
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current)
       }
 
-      // Update immediately
       const updateTimer = () => {
-        const now = Math.floor(Date.now() / 1000) // Current UTC timestamp in seconds
+        const now = Math.floor(Date.now() / 1000)
         const remaining = roundEndTimestamp - now
         setRoundTimer(remaining > 0 ? remaining : 0)
       }
 
       updateTimer()
-      
-      // Update every second
       timerIntervalRef.current = setInterval(updateTimer, 1000)
 
       return () => {
@@ -109,7 +106,6 @@ function Host() {
         }
       }
     } else {
-      // Clear timer when no end timestamp
       setRoundTimer(null)
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current)
@@ -125,12 +121,11 @@ function Host() {
       setGameCode(data.code)
       setHostUid(data.host_uid)
       setStatus('Game created! Connecting...')
-      
-      // Update URL without triggering navigation/remount
+
       window.history.replaceState(null, '', `/host/${data.code}/${data.host_uid}`)
-      
-      shouldConnectRef.current = true  // Ensure we can connect
-      connectionAttempts.current = 0  // Reset attempt counter
+
+      shouldConnectRef.current = true
+      connectionAttempts.current = 0
       connectWebSocket(data.code, data.host_uid)
     } catch (err) {
       setError('Failed to create game: ' + err.message)
@@ -138,33 +133,23 @@ function Host() {
   }
 
   const connectWebSocket = (code, uid) => {
-    if (!shouldConnectRef.current) {
-      console.log('Component unmounted, skipping WebSocket connection')
-      return
-    }
+    if (!shouldConnectRef.current) return
 
-    // Don't reconnect if already connected
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      console.log('WebSocket already connected, skipping')
-      return
-    }
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return
 
-    // Close existing connection only if it exists and is not open
     if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
       wsRef.current.close(1000, 'Reconnecting')
     }
 
     connectionAttempts.current += 1
-    console.log(`WebSocket connection attempt ${connectionAttempts.current}`)
 
     const ws = new WebSocket(`${WS_URL}/ws/${code}?uid=${uid}`)
     wsRef.current = ws
     wsConnectedRef.current = false
 
     ws.onopen = () => {
-      console.log('WebSocket connected')
       wsConnectedRef.current = true
-      connectionAttempts.current = 0 // Reset on successful connection
+      connectionAttempts.current = 0
       isInitialConnection.current = false
       setError(null)
     }
@@ -179,40 +164,26 @@ function Host() {
       }
     }
 
-    ws.onerror = (err) => {
-      console.error('WebSocket error:', err)
+    ws.onerror = () => {
       setError('Connection error')
     }
 
     ws.onclose = (event) => {
-      console.log('WebSocket closed:', event.code, event.reason)
-      
-      // If connection closed without ever opening, might be game not found
-      // But only redirect after multiple attempts to avoid race conditions
       if (!wsConnectedRef.current && shouldConnectRef.current) {
-        // If this is the initial connection from a fresh page load with params,
-        // or we've tried multiple times, assume game not found
         if (connectionAttempts.current >= 3 && !isInitialConnection.current) {
-          console.log('Connection failed after multiple attempts - game not found')
           setError('Game not found. Redirecting...')
           shouldConnectRef.current = false
-          setTimeout(() => {
-            navigate('/')
-          }, 1500)
+          setTimeout(() => navigate('/'), 1500)
           return
         } else {
-          // Retry connection
-          console.log('Connection failed, retrying...')
           reconnectTimeoutRef.current = setTimeout(() => {
             connectWebSocket(code, uid)
           }, 1000)
           return
         }
       }
-      
-      // Only reconnect if component is still mounted and it wasn't a normal close
+
       if (shouldConnectRef.current && event.code !== 1000 && event.code !== 1001) {
-        console.log('Reconnecting after abnormal close...')
         reconnectTimeoutRef.current = setTimeout(() => {
           connectWebSocket(code, uid)
         }, 1000)
@@ -252,6 +223,8 @@ function Host() {
         setGame(message.data)
         setRoundTimer(null)
         setRoundEndTimestamp(null)
+        setCorrectAnswer(null)
+        setRoundQuestion(null)
         setStatus(`Round ${message.data.round + 1} started`)
         break
 
@@ -259,6 +232,7 @@ function Host() {
         setRoundTimer(null)
         setRoundEndTimestamp(null)
         setCorrectAnswer(message.data.correct_answer)
+        setRoundQuestion(message.data.question)
         setGame(prev => ({
           ...prev,
           state: GameState.ROUND_FINISHED,
@@ -268,7 +242,6 @@ function Host() {
             return acc
           }, {})
         }))
-        // wsRef.current.send('NEXT')
         break
 
       case ResponseType.GAME_FINISHED:
@@ -277,11 +250,23 @@ function Host() {
         break
 
       case ResponseType.PLAYER_ANSWERED:
-        setStatus(`Player answered!`)
+        // Update the player's answered status in game state
+        setGame(prev => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            players: {
+              ...prev.players,
+              [message.data.uid]: {
+                ...prev.players[message.data.uid],
+                ...message.data
+              }
+            }
+          }
+        })
         break
 
       case ResponseType.ROUND_END_TIMER:
-        // message.data is a UTC timestamp in seconds
         setRoundEndTimestamp(message.data)
         break
 
@@ -304,6 +289,160 @@ function Host() {
     }
   }
 
+  const endGame = () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send('END_GAME')
+    }
+  }
+
+  // Helper: get current question object
+  const getCurrentQuestion = () => {
+    if (!game || !game.questions || game.questions.length === 0) return null
+    return game.questions[game.questions.length - 1]
+  }
+
+  // Render question display based on game type
+  const renderQuestionContent = (question, isReveal = false) => {
+    if (!question) return null
+    const gameType = game.game_type
+
+    switch (gameType) {
+      case 'crossword':
+        return (
+          <Crossword
+            gridData={game.data}
+            questions={game.questions}
+            answers={game.answers}
+            currentRound={isReveal ? -1 : game.round}
+          />
+        )
+
+      case 'multiple-choice':
+        return (
+          <div className="mc-options-host">
+            {question.data?.options?.map((option, idx) => (
+              <div
+                key={idx}
+                className={`mc-option-card mc-color-${idx % 4} ${isReveal && option === correctAnswer ? 'mc-correct' : ''}`}
+              >
+                <span className="mc-option-label">{String.fromCharCode(65 + idx)}</span>
+                <span className="mc-option-text">{option}</span>
+              </div>
+            ))}
+          </div>
+        )
+
+      case 'matching': {
+        const usedAnswers = game.answers || []
+        return (
+          <div className="matching-host">
+            <div className="matching-left-term">{question.text}</div>
+            <div className="matching-options">
+              {game.data?.options?.map((opt, idx) => {
+                const isUsed = usedAnswers.includes(opt) && opt !== correctAnswer
+                return (
+                  <div
+                    key={idx}
+                    className={`matching-option-card ${isReveal && opt === correctAnswer ? 'mc-correct' : ''} ${isUsed ? 'matching-used' : ''}`}
+                  >
+                    {opt}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      }
+
+      case 'word-search':
+        return (
+          <div className="word-search-host">
+            <div className="word-search-grid">
+              {game.data?.puzzle?.map((row, rIdx) => (
+                <div key={rIdx} className="word-search-row">
+                  {row.map((letter, cIdx) => (
+                    <div key={cIdx} className="word-search-cell">{letter}</div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+
+      case 'scramble':
+        return (
+          <div className="scramble-host">
+            <div className="scramble-letters">
+              {question.text.split('').map((letter, idx) => (
+                <div key={idx} className="scramble-tile">{letter}</div>
+              ))}
+            </div>
+          </div>
+        )
+
+      case 'fill-the-gaps':
+        return (
+          <div className="fill-gaps-host">
+            <div className="fill-gaps-sentence">
+              {question.text.split('_____').map((part, idx, arr) => (
+                <span key={idx}>
+                  {part}
+                  {idx < arr.length - 1 && <span className="fill-gaps-blank">__________</span>}
+                </span>
+              ))}
+            </div>
+          </div>
+        )
+
+      default:
+        return <div className="generic-question">{question.text}</div>
+    }
+  }
+
+  // Types where the main area is just text (no visual grid/cards) — word bank goes below question
+  const isTextOnlyType = () => {
+    const t = game.game_type
+    return t === 'scramble' || t === 'fill-the-gaps' || (t !== 'crossword' && t !== 'multiple-choice' && t !== 'matching' && t !== 'word-search')
+  }
+
+  const renderWordBank = () => {
+    if (!game.data?.word_bank) return null
+    const remaining = game.data.word_bank.filter(w => !(game.answers || []).includes(w))
+    if (remaining.length === 0) return null
+    return (
+      <div className={`word-bank ${isTextOnlyType() ? 'word-bank-main' : ''}`}>
+        <h3>Word Bank</h3>
+        <div className="word-bank-list">
+          {remaining.map((word, idx) => (
+            <div key={idx} className="word-bank-item">{word}</div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Get the question text to show in the question box (for types that need it)
+  const getQuestionBoxText = (question) => {
+    if (!question) return ''
+    const gameType = game.game_type
+    switch (gameType) {
+      case 'crossword':
+        return question.text // the clue
+      case 'multiple-choice':
+        return question.text
+      case 'scramble':
+        return 'Unscramble this word!'
+      case 'fill-the-gaps':
+        return 'Fill in the blank!'
+      case 'matching':
+        return 'Match the pair!'
+      case 'word-search':
+        return `Find the word: ${question.text}`
+      default:
+        return question.text
+    }
+  }
+
   if (finalScores) {
     return (
       <div className="container">
@@ -311,8 +450,8 @@ function Host() {
         <div className="leaderboard">
           <h2>Final Scores</h2>
           {finalScores.map((player, idx) => (
-            <div 
-              key={player.uid} 
+            <div
+              key={player.uid}
               className={`leaderboard-item ${idx === 0 ? 'first' : idx === 1 ? 'second' : idx === 2 ? 'third' : ''}`}
             >
               <span>{idx + 1}. {player.name}</span>
@@ -338,6 +477,8 @@ function Host() {
   const players = Object.values(game.players || {})
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score)
   const top3Players = sortedPlayers.slice(0, 3)
+  const currentQuestion = getCurrentQuestion()
+  const answeredCount = players.filter(p => p.answered).length
 
   return (
     <div className="container">
@@ -352,15 +493,15 @@ function Host() {
           <div className="waiting-room-header">
             <img src={Logo} alt="Logo" className="waiting-logo" />
           </div>
-          
+
           <div className="waiting-room-join">
             <div className="waiting-room-code">
               <div className="code-label">https://play.toolsedu.com/</div>
               <div className="code-value">{gameCode}</div>
             </div>
             <div className="waiting-room-qr">
-              <QRCodeSVG 
-                value={`${HOST_URL}/player/${gameCode}`} 
+              <QRCodeSVG
+                value={`${HOST_URL}/player/${gameCode}`}
                 size={160}
                 bgColor="transparent"
                 fgColor="#785feb"
@@ -382,12 +523,11 @@ function Host() {
           </div>
 
           <div className="waiting-room-actions">
-            {/* <button onClick={() => navigate('/')} className="btn-back">Back to Menu</button> */}
             <button onClick={startGame} disabled={players.length === 0} className="btn-start">
               Start Game
             </button>
           </div>
-          
+
           {error && <div className="status error">{error}</div>}
         </div>
       )}
@@ -397,27 +537,16 @@ function Host() {
           <div className="host-header">
             <div className="game-code-small">{gameCode}</div>
             <img src={Logo} alt="Logo" className="host-logo" />
-            <span>Round {game.round + 1}</span>
+            <span>Round {game.round + 1} &middot; {answeredCount}/{players.length} answered</span>
           </div>
-          
+
           <div className="question-box">
-            {game.questions[game.round]}
+            {getQuestionBoxText(currentQuestion)}
           </div>
 
           <div className="host-game-layout">
             <div className="host-main">
-              {game.game_type === 'multiple-choice' && game.data?.options ? (
-                <div className="mc-options-host">
-                  {game.data.options[game.round]?.map((option, idx) => (
-                    <div key={idx} className={`mc-option-card mc-color-${idx % 4}`}>
-                      <span className="mc-option-label">{String.fromCharCode(65 + idx)}</span>
-                      <span className="mc-option-text">{option}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                game.data && <Crossword data={game.data} answers={game.answers} currentWordIndex={game.round} />
-              )}
+              {renderQuestionContent(currentQuestion)}
             </div>
 
             <div className="host-sidebar">
@@ -438,8 +567,12 @@ function Host() {
                   </div>
                 )}
               </div>
+              {!isTextOnlyType() && renderWordBank()}
+              <button className="btn-end-game" onClick={endGame}>End Game</button>
             </div>
           </div>
+
+          {isTextOnlyType() && renderWordBank()}
         </>
       )}
 
@@ -453,18 +586,7 @@ function Host() {
 
           <div className="host-game-layout">
             <div className="host-main">
-              {game.game_type === 'multiple-choice' && game.data?.options ? (
-                <div className="mc-options-host">
-                  {game.data.options[game.round]?.map((option, idx) => (
-                    <div key={idx} className={`mc-option-card mc-color-${idx % 4} ${option === correctAnswer ? 'mc-correct' : ''}`}>
-                      <span className="mc-option-label">{String.fromCharCode(65 + idx)}</span>
-                      <span className="mc-option-text">{option}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                game.data && <Crossword data={game.data} answers={game.answers} />
-              )}
+              {renderQuestionContent(roundQuestion || currentQuestion, true)}
             </div>
 
             <div className="host-sidebar">
@@ -485,20 +607,23 @@ function Host() {
                   </div>
                 )}
               </div>
+              {!isTextOnlyType() && renderWordBank()}
             </div>
           </div>
+
+          {isTextOnlyType() && renderWordBank()}
 
           {/* Modal popup */}
           <div className="modal-overlay">
             <div className="modal-content">
               <h2>Round {game.round + 1} Complete!</h2>
               <div className="correct-answer-big">{correctAnswer}</div>
-              
+
               <div className="modal-leaderboard">
                 <h3>Standings</h3>
                 {sortedPlayers.map((player, idx) => (
-                  <div 
-                    key={player.uid} 
+                  <div
+                    key={player.uid}
                     className={`leaderboard-item ${idx === 0 ? 'first' : idx === 1 ? 'second' : idx === 2 ? 'third' : ''}`}
                   >
                     <span>{idx + 1}. {player.name}</span>
@@ -506,7 +631,7 @@ function Host() {
                   </div>
                 ))}
               </div>
-              
+
               <button onClick={nextRound}>Next Round</button>
             </div>
           </div>
@@ -519,4 +644,3 @@ function Host() {
 }
 
 export default Host
-

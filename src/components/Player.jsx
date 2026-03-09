@@ -17,6 +17,7 @@ const ResponseType = {
   GAME_FINISHED: "game_finished",
   ANSWER: "answer",
   ROUND_END_TIMER: "round_end_timer",
+  PLAYER_ANSWERED: "player_answered",
   UNKNOWN: "unknown"
 }
 
@@ -48,8 +49,7 @@ function Player() {
 
   useEffect(() => {
     shouldConnectRef.current = true
-    
-    // If we have URL params, reconnect to existing game
+
     if (params.gameCode && params.uid) {
       shouldConnectRef.current = true
       setJoined(true)
@@ -57,7 +57,7 @@ function Player() {
       setStatus('Reconnecting...')
       connectWebSocket(params.gameCode, params.uid)
     }
-    
+
     return () => {
       shouldConnectRef.current = false
       if (wsRef.current) {
@@ -76,21 +76,17 @@ function Player() {
   // Live timer effect
   useEffect(() => {
     if (roundEndTimestamp) {
-      // Clear any existing interval
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current)
       }
 
-      // Update immediately
       const updateTimer = () => {
-        const now = Math.floor(Date.now() / 1000) // Current UTC timestamp in seconds
+        const now = Math.floor(Date.now() / 1000)
         const remaining = roundEndTimestamp - now
         setRoundTimer(remaining > 0 ? remaining : 0)
       }
 
       updateTimer()
-      
-      // Update every second
       timerIntervalRef.current = setInterval(updateTimer, 1000)
 
       return () => {
@@ -99,7 +95,6 @@ function Player() {
         }
       }
     } else {
-      // Clear timer when no end timestamp
       setRoundTimer(null)
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current)
@@ -126,10 +121,9 @@ function Player() {
       setPlayer(data)
       setJoined(true)
       setStatus('Joined game! Waiting for host to start...')
-      // Update URL without triggering remount
       const code = gameCode.trim().toUpperCase()
       window.history.replaceState(null, '', `/player/${code}/${data.uid}`)
-      shouldConnectRef.current = true  // Ensure we can connect
+      shouldConnectRef.current = true
       connectWebSocket(code, data.uid)
     } catch (err) {
       setError('Failed to join game: ' + err.message)
@@ -138,18 +132,10 @@ function Player() {
   }
 
   const connectWebSocket = (code, uid) => {
-    if (!shouldConnectRef.current) {
-      console.log('Component unmounted, skipping WebSocket connection')
-      return
-    }
+    if (!shouldConnectRef.current) return
 
-    // Don't reconnect if already connected
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      console.log('WebSocket already connected, skipping')
-      return
-    }
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return
 
-    // Close existing connection only if it exists and is not open
     if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
       wsRef.current.close(1000, 'Reconnecting')
     }
@@ -159,7 +145,6 @@ function Player() {
     wsConnectedRef.current = false
 
     ws.onopen = () => {
-      console.log('WebSocket connected')
       wsConnectedRef.current = true
       hasEverConnectedRef.current = true
       retryCountRef.current = 0
@@ -176,35 +161,21 @@ function Player() {
       }
     }
 
-    ws.onerror = (err) => {
-      console.error('WebSocket error:', err)
+    ws.onerror = () => {
       setError('Connection error')
     }
 
     ws.onclose = (event) => {
-      console.log('WebSocket closed:', event.code, event.reason)
-      
-      // If connection closed without ever opening
       if (!wsConnectedRef.current && shouldConnectRef.current) {
-        // Check if it's a 404 (game not found) - HTTP 404 results in close code 1006
-        // with specific patterns, but we can't reliably detect it
-        // So we retry a few times before giving up
-        
         if (!hasEverConnectedRef.current) {
           retryCountRef.current++
-          
+
           if (retryCountRef.current >= MAX_INITIAL_RETRIES) {
-            // After max retries, assume game doesn't exist
-            console.log('Connection failed after max retries - game not found')
             setError('Game not found. Redirecting...')
-            setTimeout(() => {
-              leaveGame()
-            }, 1500)
+            setTimeout(() => leaveGame(), 1500)
             return
           }
-          
-          // Keep trying
-          console.log(`Connection failed, retrying... (${retryCountRef.current}/${MAX_INITIAL_RETRIES})`)
+
           setError(`Connection failed, retrying... (${retryCountRef.current}/${MAX_INITIAL_RETRIES})`)
           reconnectTimeoutRef.current = setTimeout(() => {
             connectWebSocket(code, uid)
@@ -212,10 +183,8 @@ function Player() {
           return
         }
       }
-      
-      // Only reconnect if component is still mounted and it wasn't a normal close
+
       if (shouldConnectRef.current && event.code !== 1000 && event.code !== 1001) {
-        console.log('Reconnecting...')
         setError('Connection lost, reconnecting...')
         reconnectTimeoutRef.current = setTimeout(() => {
           connectWebSocket(code, uid)
@@ -232,6 +201,10 @@ function Player() {
         setGame(message.data)
         if (message.data.state === GameState.WAITING_FOR_PLAYERS) {
           setStatus('Waiting for players...')
+        }
+        // Restore player info from game state on reconnect
+        if (player && message.data.players?.[player.uid]) {
+          setPlayer(message.data.players[player.uid])
         }
         break
 
@@ -254,6 +227,7 @@ function Player() {
         setAnswer('')
         setRoundTimer(null)
         setRoundEndTimestamp(null)
+        setCorrectAnswer(null)
         setStatus(`Round ${message.data.round + 1} started!`)
         break
 
@@ -261,7 +235,6 @@ function Player() {
         if (message.data.correct) {
           setStatus(`Correct! +${message.data.score_delta} points`)
           setAnswered(true)
-          // Update local score
           setPlayer(prev => prev ? ({
             ...prev,
             score: prev.score + message.data.score_delta
@@ -271,6 +244,23 @@ function Player() {
           setAnswered(false)
           setAnswer('')
         }
+        break
+
+      case ResponseType.PLAYER_ANSWERED:
+        // Update the player's answered status in game state
+        setGame(prev => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            players: {
+              ...prev.players,
+              [message.data.uid]: {
+                ...prev.players[message.data.uid],
+                ...message.data
+              }
+            }
+          }
+        })
         break
 
       case ResponseType.ROUND_FINISHED:
@@ -287,7 +277,6 @@ function Player() {
             return acc
           }, {})
         }))
-        // Update player from leaderboard
         if (player) {
           const myPlayer = message.data.players.find(p => p.uid === player.uid)
           if (myPlayer) {
@@ -302,7 +291,6 @@ function Player() {
         break
 
       case ResponseType.ROUND_END_TIMER:
-        // message.data is a UTC timestamp in seconds
         setRoundEndTimestamp(message.data)
         break
 
@@ -354,6 +342,168 @@ function Player() {
     }
   }
 
+  // Helper: get current question object { text, data }
+  const getCurrentQuestion = () => {
+    if (!game || !game.questions || game.questions.length === 0) return null
+    return game.questions[game.questions.length - 1]
+  }
+
+  // Render question display text
+  const getQuestionDisplay = (question) => {
+    if (!question) return ''
+    const gameType = game.game_type
+
+    switch (gameType) {
+      case 'crossword':
+        return question.text
+      case 'multiple-choice':
+        return question.text
+      case 'scramble':
+        return null // handled in renderAnswerInput
+      case 'fill-the-gaps':
+        return null // handled in renderAnswerInput
+      case 'matching':
+        return question.text
+      case 'word-search':
+        return `Find: ${question.text}`
+      default:
+        return question.text
+    }
+  }
+
+  // Render the answer input area based on game type
+  const renderAnswerInput = (question) => {
+    if (!question) return null
+    const gameType = game.game_type
+
+    switch (gameType) {
+      case 'multiple-choice':
+        return (
+          <>
+            {renderWrongStatus()}
+            <div className="mc-options-player">
+              {question.data?.options?.map((option, idx) => (
+                <button
+                  key={idx}
+                  className={`mc-option-btn mc-color-${idx % 4}`}
+                  onClick={() => submitChoice(option)}
+                >
+                  <span className="mc-option-label">{String.fromCharCode(65 + idx)}</span>
+                  <span className="mc-option-text">{option}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )
+
+      case 'matching': {
+        const usedAnswers = game.answers || []
+        return (
+          <>
+            {renderWrongStatus()}
+            <div className="matching-options-player">
+              {game.data?.options?.map((option, idx) => {
+                const isUsed = usedAnswers.includes(option)
+                return (
+                  <button
+                    key={idx}
+                    className={`matching-option-btn ${isUsed ? 'matching-used' : ''}`}
+                    onClick={() => submitChoice(option)}
+                    disabled={isUsed}
+                  >
+                    {option}
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        )
+      }
+
+      case 'scramble':
+        return (
+          <>
+            <div className="scramble-player">
+              <div className="scramble-letters-player">
+                {question.text.split('').map((letter, idx) => (
+                  <div key={idx} className="scramble-tile-player">{letter}</div>
+                ))}
+              </div>
+            </div>
+            {renderWrongStatus()}
+            {renderTextInput('Type the unscrambled word...')}
+          </>
+        )
+
+      case 'fill-the-gaps':
+        return (
+          <>
+            <div className="fill-gaps-player">
+              {question.text.split('_____').map((part, idx, arr) => (
+                <span key={idx}>
+                  {part}
+                  {idx < arr.length - 1 && <span className="fill-gaps-blank-player">_____</span>}
+                </span>
+              ))}
+            </div>
+            {renderWrongStatus()}
+            {renderTextInput('Type the missing word...')}
+          </>
+        )
+
+      case 'word-search':
+        return (
+          <>
+            {game.data?.puzzle && (
+              <div className="word-search-player">
+                {game.data.puzzle.map((row, rIdx) => (
+                  <div key={rIdx} className="word-search-row-player">
+                    {row.map((letter, cIdx) => (
+                      <div key={cIdx} className="word-search-cell-player">{letter}</div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+            {renderWrongStatus()}
+            {renderTextInput('Type the word...')}
+          </>
+        )
+
+      case 'crossword':
+      default:
+        return (
+          <>
+            {renderWrongStatus()}
+            {renderTextInput('Type your answer...')}
+          </>
+        )
+    }
+  }
+
+  const renderWrongStatus = () => {
+    if (status && (status.toLowerCase().includes('wrong') || status.toLowerCase().includes('incorrect'))) {
+      return <div className="player-status error">{status}</div>
+    }
+    return null
+  }
+
+  const renderTextInput = (placeholder) => (
+    <form onSubmit={submitAnswer} className="player-answer-form">
+      <input
+        type="text"
+        placeholder={placeholder}
+        value={answer}
+        onChange={(e) => setAnswer(e.target.value)}
+        required
+        autoFocus
+        autoComplete="off"
+        autoCapitalize="off"
+      />
+      <button type="submit" className="btn-green">Submit</button>
+    </form>
+  )
+
   const myRank = finalScores ? finalScores.findIndex(p => p.uid === player?.uid) + 1 : 0
 
   if (finalScores) {
@@ -374,8 +524,8 @@ function Player() {
 
           <div className="player-leaderboard">
             {finalScores.map((p, idx) => (
-              <div 
-                key={p.uid} 
+              <div
+                key={p.uid}
                 className={`player-leaderboard-item ${player && p.uid === player.uid ? 'you' : ''} ${idx === 0 ? 'gold' : idx === 1 ? 'silver' : idx === 2 ? 'bronze' : ''}`}
               >
                 <span>{idx + 1}. {p.name}</span>
@@ -384,8 +534,6 @@ function Player() {
             ))}
           </div>
         </div>
-
-        {/*<button className="player-leave-btn" onClick={leaveGame}>Back to Menu</button>*/}
       </div>
     )
   }
@@ -397,7 +545,7 @@ function Player() {
           <h1 style={{ fontSize: '32px', marginBottom: '12px', color: 'white', fontWeight: '900' }}>Join Game!</h1>
           <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '16px' }}>Enter the PIN shown on screen</p>
         </div>
-        
+
         <form onSubmit={joinGame} className="join-form">
           <input
             type="text"
@@ -416,9 +564,8 @@ function Player() {
             style={{ textTransform: 'none' }}
           />
           <button type="submit" disabled={joining}>{joining ? 'Joining...' : 'Enter'}</button>
-          {/*<button type="button" className="back-btn" onClick={leaveGame}>Back</button>*/}
         </form>
-        
+
         {error && <div className="player-status error">{error}</div>}
       </div>
     )
@@ -447,6 +594,7 @@ function Player() {
   const players = Object.values(game.players || {})
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score)
   const currentRank = sortedPlayers.findIndex(p => p.uid === player?.uid) + 1
+  const currentQuestion = getCurrentQuestion()
 
   return (
     <div className="player-container">
@@ -476,61 +624,28 @@ function Player() {
 
         {game.state === GameState.WAITING_FOR_ANSWER && (
           <>
-            <div className="player-question">
-              {game.questions[game.round]}
-            </div>
+            {getQuestionDisplay(currentQuestion) && (
+              <div className="player-question">
+                {getQuestionDisplay(currentQuestion)}
+              </div>
+            )}
 
             {answered ? (
               <div className="player-correct-badge">
                 <div className="checkmark">✓</div>
                 <div className="text">Correct! Waiting for others...</div>
               </div>
-            ) : game.game_type === 'multiple-choice' && game.data?.options ? (
-              <>
-                {status && (status.toLowerCase().includes('wrong') || status.toLowerCase().includes('incorrect')) && (
-                  <div className="player-status error">{status}</div>
-                )}
-                <div className="mc-options-player">
-                  {game.data.options[game.round]?.map((option, idx) => (
-                    <button
-                      key={idx}
-                      className={`mc-option-btn mc-color-${idx % 4}`}
-                      onClick={() => submitChoice(option)}
-                    >
-                      <span className="mc-option-label">{String.fromCharCode(65 + idx)}</span>
-                      <span className="mc-option-text">{option}</span>
-                    </button>
-                  ))}
-                </div>
-              </>
             ) : (
-              <>
-                {status && (status.toLowerCase().includes('wrong') || status.toLowerCase().includes('incorrect')) && (
-                  <div className="player-status error">{status}</div>
-                )}
-                <form onSubmit={submitAnswer} className="player-answer-form">
-                  <input
-                    type="text"
-                    placeholder="Type your answer..."
-                    value={answer}
-                    onChange={(e) => setAnswer(e.target.value)}
-                    required
-                    autoFocus
-                    autoComplete="off"
-                    autoCapitalize="off"
-                  />
-                  <button type="submit" className="btn-green">Submit</button>
-                </form>
-              </>
+              renderAnswerInput(currentQuestion)
             )}
           </>
         )}
 
         {game.state === GameState.ROUND_FINISHED && (
           <div className="player-round-result">
-            <p >The answer was</p>
+            <p>The answer was</p>
             <div className="answer-reveal">{correctAnswer}</div>
-            
+
             {currentRank > 0 && (
               <div className="player-rank">
                 <div className="rank-number">#{currentRank}</div>
@@ -540,8 +655,8 @@ function Player() {
 
             <div className="player-leaderboard">
               {sortedPlayers.slice(0, 5).map((p, idx) => (
-                <div 
-                  key={p.uid} 
+                <div
+                  key={p.uid}
                   className={`player-leaderboard-item ${player && p.uid === player.uid ? 'you' : ''} ${idx === 0 ? 'gold' : idx === 1 ? 'silver' : idx === 2 ? 'bronze' : ''}`}
                 >
                   <span>{idx + 1}. {p.name}</span>
@@ -561,4 +676,3 @@ function Player() {
 }
 
 export default Player
-
