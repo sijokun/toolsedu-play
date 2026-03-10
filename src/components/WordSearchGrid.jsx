@@ -40,12 +40,20 @@ function WordSearchGrid({ grid, foundWords = {}, onSelect, interactive = false, 
 
   // Build set of highlighted cells from found words
   const highlightedCells = useMemo(() => {
-    const map = {} // "r:c" -> { color index }
+    const map = {} // "r:c" -> [colorIdx, ...]
+    const hashWord = (w) => {
+      let h = 0
+      for (let i = 0; i < w.length; i++) h = ((h << 5) - h + w.charCodeAt(i)) | 0
+      return Math.abs(h)
+    }
     const words = Object.entries(foundWords)
-    words.forEach(([word, info], idx) => {
+    words.forEach(([word, info]) => {
+      const colorIdx = hashWord(word) % 10
       const cells = parseCoordsToPath(info.coords)
       cells.forEach(([r, c]) => {
-        map[`${r}:${c}`] = { idx: idx % 6, word }
+        const key = `${r}:${c}`
+        if (!map[key]) map[key] = []
+        if (!map[key].includes(colorIdx)) map[key].push(colorIdx)
       })
     })
     return map
@@ -202,7 +210,15 @@ function WordSearchGrid({ grid, foundWords = {}, onSelect, interactive = false, 
 
           let bg = 'transparent'
           if (highlight) {
-            bg = highlightColors[highlight.idx]
+            if (highlight.length === 1) {
+              bg = highlightColors[highlight[0]]
+            } else {
+              // Hatched stripes for overlapping words
+              const c1 = highlightColors[highlight[0]]
+              const c2 = highlightColors[highlight[1]]
+              const s = 4 // stripe width in px
+              bg = `repeating-linear-gradient(45deg, ${c1} 0px, ${c1} ${s}px, ${c2} ${s}px, ${c2} ${s * 2}px)`
+            }
           }
           if (isSelecting) {
             bg = 'rgba(120, 95, 235, 0.5)'

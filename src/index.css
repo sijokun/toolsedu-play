@@ -527,6 +527,7 @@ input:focus {
   flex: 1;
   display: flex;
   flex-direction: column;
+  align-items: center;
   padding: 20px;
   overflow-y: auto;
   min-height: 0;
@@ -535,6 +536,8 @@ input:focus {
 .player-question {
   background: white;
   color: #333;
+  width: 100%;
+  max-width: 500px;
   padding: 20px;
   border-radius: 12px;
   font-size: 20px;
@@ -547,6 +550,8 @@ input:focus {
 .player-answer-form {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  max-width: 500px;
   gap: 12px;
 }
 
@@ -609,6 +614,8 @@ input:focus {
   padding: 32px;
   border-radius: 12px;
   text-align: center;
+  width: 100%;
+  max-width: 500px;
 }
 
 .player-correct-badge .checkmark {
@@ -663,6 +670,9 @@ input:focus {
 .player-round-result {
   text-align: center;
   padding: 20px;
+  max-width: 500px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .player-round-result p {
@@ -689,7 +699,9 @@ input:focus {
   color: white;
   padding: 20px;
   border-radius: 10px;
-  margin: 20px 0;
+  margin: 20px auto;
+  max-width: 500px;
+  width: 100%;
 }
 
 .player-rank .rank-number {
@@ -794,7 +806,9 @@ input:focus {
 
 /* Mobile leaderboard for player */
 .player-leaderboard {
-  margin: 12px 0;
+  margin: 12px auto;
+  max-width: 500px;
+  width: 100%;
 }
 
 .player-leaderboard-item {
@@ -912,6 +926,8 @@ input:focus {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  width: 100%;
+  max-width: 500px;
 }
 
 .mc-option-btn {
@@ -1182,6 +1198,8 @@ input:focus {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  width: 100%;
+  max-width: 500px;
 }
 
 .matching-option-btn {
