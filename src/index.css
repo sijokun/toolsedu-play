@@ -1324,6 +1324,40 @@ input:focus {
 }
 
 /* Player word search */
+.ws-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  z-index: 1000;
+  animation: ws-toast-in 0.25s ease-out, ws-toast-out 0.3s ease-in 1.5s forwards;
+  pointer-events: none;
+}
+
+.ws-toast-success {
+  background: #22c55e;
+  color: white;
+}
+
+.ws-toast-error {
+  background: #ef4444;
+  color: white;
+}
+
+@keyframes ws-toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes ws-toast-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 .ws-progress-player {
   text-align: center;
   font-size: 14px;

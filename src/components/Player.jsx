@@ -506,15 +506,15 @@ function Player() {
 
     return (
       <>
-        <div className="ws-progress-player">
-          {foundCount}/{totalCount} words found
-        </div>
-
         {wsStatus && (
-          <div className={`player-status ${wsStatus.type === 'success' ? 'success' : 'error'}`}>
+          <div className={`ws-toast ${wsStatus.type === 'success' ? 'ws-toast-success' : 'ws-toast-error'}`}>
             {wsStatus.text}
           </div>
         )}
+
+        <div className="ws-progress-player">
+          {foundCount}/{totalCount} words found
+        </div>
 
         {grid && (
           <WordSearchGrid
