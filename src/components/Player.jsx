@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useWebHaptics } from "web-haptics/react";
 import { API_URL, WS_URL } from '../config'
 import WordSearchGrid from './WordSearchGrid'
+
+
+const { trigger } = useWebHaptics();
 
 const GameState = {
   WAITING_FOR_PLAYERS: "waiting_for_players",
@@ -152,6 +156,41 @@ function Player() {
     }
   }
 
+  // ── Event hooks ──
+  const onCorrectAnswer = (scoreDelta) => {
+    console.log('✅ Correct answer! +' + scoreDelta)
+    trigger([
+      { duration: 30 },
+      { delay: 60, duration: 40, intensity: 1 },
+    ])
+  }
+
+  const onIncorrectAnswer = (message) => {
+    console.log('❌ Incorrect answer:', message)
+    trigger([
+      { duration: 40, intensity: 0.7 },
+      { delay: 40, duration: 40, intensity: 0.7 },
+      { delay: 40, duration: 40, intensity: 0.9 },
+      { delay: 40, duration: 50, intensity: 0.6 },
+    ])
+  }
+
+  const onRoundStart = (roundIndex) => {
+    console.log('🎮 Round started:', roundIndex + 1)
+    trigger([
+      { duration: 80, intensity: 0.16 },
+      { delay: 50, duration: 80, intensity: 0.3 },
+    ])
+  }
+
+  const onTimerStart = (timestamp) => {
+    console.log('⏱ 15s timer started, ends at:', timestamp)
+    let ms_to_end = 15 * 1000 - (Date.now() - timestamp * 1000)
+    trigger([
+      { duration: ms_to_end },
+    ], { intensity: 0.05 })
+  }
+
   const handleMessage = (message) => {
     console.log('Received:', message)
 
@@ -184,10 +223,12 @@ function Player() {
         setRoundEndTimestamp(null)
         setCorrectAnswer(null)
         setStatus(`Round ${message.data.round + 1} started!`)
+        onRoundStart(message.data.round)
         break
 
       case ResponseType.ANSWER:
         if (message.data.correct) {
+          onCorrectAnswer(message.data.score_delta)
           // For word search, don't lock out — player can keep finding words
           if (game?.game_type === 'word-search') {
             setWsStatus({ type: 'success', text: `Correct! +${message.data.score_delta} point` })
@@ -200,6 +241,7 @@ function Player() {
             setPlayer(prev => prev ? ({ ...prev, score: prev.score + message.data.score_delta }) : prev)
           }
         } else {
+          onIncorrectAnswer(message.data.message)
           if (game?.game_type === 'word-search') {
             setWsStatus({ type: 'error', text: message.data.message })
             setTimeout(() => setWsStatus(null), 2000)
@@ -270,6 +312,7 @@ function Player() {
 
       case ResponseType.ROUND_END_TIMER:
         setRoundEndTimestamp(message.data)
+        onTimerStart(message.data)
         break
 
       default:
