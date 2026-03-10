@@ -51,6 +51,7 @@ function Player() {
   const wsConnectedRef = useRef(false)
   const hasEverConnectedRef = useRef(false)
   const retryCountRef = useRef(0)
+  const handleMessageRef = useRef(null)
   const MAX_INITIAL_RETRIES = 5
 
   useEffect(() => {
@@ -132,7 +133,7 @@ function Player() {
     }
     ws.onmessage = (event) => {
       if (!event.data) return
-      try { handleMessage(JSON.parse(event.data)) } catch (e) { console.log('Non-JSON message:', event.data) }
+      try { handleMessageRef.current(JSON.parse(event.data)) } catch (e) { console.log('Non-JSON message:', event.data) }
     }
     ws.onerror = () => setError('Connection error')
     ws.onclose = (event) => {
@@ -319,6 +320,7 @@ function Player() {
         console.log('Unknown event:', message)
     }
   }
+  handleMessageRef.current = handleMessage
 
   const leaveGame = () => {
     shouldConnectRef.current = false
