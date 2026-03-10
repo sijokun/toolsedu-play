@@ -106,9 +106,11 @@ function Player() {
       window.history.replaceState(null, '', `/player/${code}/${data.uid}`)
       shouldConnectRef.current = true
       connectWebSocket(code, data.uid)
+      trigger('success')
     } catch (err) {
       setError('Failed to join game: ' + err.message)
       setJoining(false)
+      trigger('error')
     }
   }
 
