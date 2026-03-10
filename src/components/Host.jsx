@@ -3,11 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import { API_URL, WS_URL, HOST_URL } from '../config'
 import Crossword from './Crossword'
+import WordSearchGrid from './WordSearchGrid'
 import Logo from '../logo/2_horizontal.svg'
 
 const GameState = {
   WAITING_FOR_PLAYERS: "waiting_for_players",
   WAITING_FOR_ANSWER: "waiting_for_answer",
+  ACTIVE: "active",
   ROUND_FINISHED: "round_finished",
   FINISHED: "finished"
 }
@@ -20,6 +22,7 @@ const ResponseType = {
   GAME_FINISHED: "game_finished",
   ROUND_END_TIMER: "round_end_timer",
   PLAYER_ANSWERED: "player_answered",
+  WORD_FOUND: "word_found",
   UNKNOWN: "unknown"
 }
 
@@ -47,7 +50,6 @@ function Host() {
   const isInitialConnection = useRef(true)
 
   useEffect(() => {
-    // If we have URL params, reconnect to existing game
     if (params.gameCode && params.uid) {
       shouldConnectRef.current = true
       connectionAttempts.current = 0
@@ -56,9 +58,7 @@ function Host() {
       setHostUid(params.uid)
       setStatus('Connecting...')
       connectWebSocket(params.gameCode, params.uid)
-    }
-    // Otherwise create a new game
-    else if (!isCreatingRef.current) {
+    } else if (!isCreatingRef.current) {
       isCreatingRef.current = true
       shouldConnectRef.current = true
       connectionAttempts.current = 0
@@ -68,49 +68,28 @@ function Host() {
 
     return () => {
       shouldConnectRef.current = false
-      if (wsRef.current) {
-        wsRef.current.close(1000, 'Component unmounting')
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
-      }
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current)
-      }
-      if (autoNextTimeoutRef.current) {
-        clearInterval(autoNextTimeoutRef.current)
-      }
+      if (wsRef.current) wsRef.current.close(1000, 'Component unmounting')
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
+      if (autoNextTimeoutRef.current) clearInterval(autoNextTimeoutRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Live timer effect
   useEffect(() => {
     if (roundEndTimestamp) {
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current)
-      }
-
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
       const updateTimer = () => {
         const now = Math.floor(Date.now() / 1000)
         const remaining = roundEndTimestamp - now
         setRoundTimer(remaining > 0 ? remaining : 0)
       }
-
       updateTimer()
       timerIntervalRef.current = setInterval(updateTimer, 1000)
-
-      return () => {
-        if (timerIntervalRef.current) {
-          clearInterval(timerIntervalRef.current)
-        }
-      }
+      return () => { if (timerIntervalRef.current) clearInterval(timerIntervalRef.current) }
     } else {
       setRoundTimer(null)
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current)
-        timerIntervalRef.current = null
-      }
+      if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
     }
   }, [roundEndTimestamp])
 
@@ -121,9 +100,7 @@ function Host() {
       setGameCode(data.code)
       setHostUid(data.host_uid)
       setStatus('Game created! Connecting...')
-
       window.history.replaceState(null, '', `/host/${data.code}/${data.host_uid}`)
-
       shouldConnectRef.current = true
       connectionAttempts.current = 0
       connectWebSocket(data.code, data.host_uid)
@@ -134,15 +111,11 @@ function Host() {
 
   const connectWebSocket = (code, uid) => {
     if (!shouldConnectRef.current) return
-
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return
-
     if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
       wsRef.current.close(1000, 'Reconnecting')
     }
-
     connectionAttempts.current += 1
-
     const ws = new WebSocket(`${WS_URL}/ws/${code}?uid=${uid}`)
     wsRef.current = ws
     wsConnectedRef.current = false
@@ -153,21 +126,11 @@ function Host() {
       isInitialConnection.current = false
       setError(null)
     }
-
     ws.onmessage = (event) => {
       if (!event.data) return
-      try {
-        const message = JSON.parse(event.data)
-        handleMessage(message)
-      } catch (e) {
-        console.log('Non-JSON message:', event.data)
-      }
+      try { handleMessage(JSON.parse(event.data)) } catch (e) { console.log('Non-JSON message:', event.data) }
     }
-
-    ws.onerror = () => {
-      setError('Connection error')
-    }
-
+    ws.onerror = () => setError('Connection error')
     ws.onclose = (event) => {
       if (!wsConnectedRef.current && shouldConnectRef.current) {
         if (connectionAttempts.current >= 3 && !isInitialConnection.current) {
@@ -175,18 +138,12 @@ function Host() {
           shouldConnectRef.current = false
           setTimeout(() => navigate('/'), 1500)
           return
-        } else {
-          reconnectTimeoutRef.current = setTimeout(() => {
-            connectWebSocket(code, uid)
-          }, 1000)
-          return
         }
+        reconnectTimeoutRef.current = setTimeout(() => connectWebSocket(code, uid), 1000)
+        return
       }
-
       if (shouldConnectRef.current && event.code !== 1000 && event.code !== 1001) {
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connectWebSocket(code, uid)
-        }, 1000)
+        reconnectTimeoutRef.current = setTimeout(() => connectWebSocket(code, uid), 1000)
       }
     }
   }
@@ -201,6 +158,10 @@ function Host() {
           setStatus('Waiting for players...')
         } else if (message.data.state === GameState.WAITING_FOR_ANSWER) {
           setStatus(`Round ${message.data.round + 1} in progress`)
+        } else if (message.data.state === GameState.ACTIVE) {
+          const found = Object.keys(message.data.data?.found_words || {}).length
+          const total = message.data.questions?.length || 0
+          setStatus(`Word Search — ${found}/${total} found`)
         } else if (message.data.state === GameState.ROUND_FINISHED) {
           setStatus('Round finished!')
         } else {
@@ -211,10 +172,7 @@ function Host() {
       case ResponseType.NEW_PLAYER:
         setGame(prev => ({
           ...prev,
-          players: {
-            ...prev?.players,
-            [message.data.uid]: message.data
-          }
+          players: { ...prev?.players, [message.data.uid]: message.data }
         }))
         setStatus(`${message.data.name} joined!`)
         break
@@ -228,6 +186,27 @@ function Host() {
         setStatus(`Round ${message.data.round + 1} started`)
         break
 
+      case ResponseType.WORD_FOUND:
+        setGame(prev => {
+          if (!prev) return prev
+          const newFound = { ...(prev.data?.found_words || {}) }
+          newFound[message.data.word] = {
+            finder_name: message.data.finder_name,
+            coords: message.data.coords
+          }
+          const newPlayers = message.data.players.reduce((acc, p) => {
+            acc[p.uid] = p
+            return acc
+          }, {})
+          return {
+            ...prev,
+            data: { ...prev.data, found_words: newFound },
+            players: newPlayers
+          }
+        })
+        setStatus(`${message.data.finder_name} found "${message.data.word}"! (${message.data.found_count}/${message.data.total_count})`)
+        break
+
       case ResponseType.ROUND_FINISHED:
         setRoundTimer(null)
         setRoundEndTimestamp(null)
@@ -237,10 +216,7 @@ function Host() {
           ...prev,
           state: GameState.ROUND_FINISHED,
           answers: [...(prev?.answers || []), message.data.correct_answer],
-          players: message.data.players.reduce((acc, p) => {
-            acc[p.uid] = p
-            return acc
-          }, {})
+          players: message.data.players.reduce((acc, p) => { acc[p.uid] = p; return acc }, {})
         }))
         break
 
@@ -250,17 +226,13 @@ function Host() {
         break
 
       case ResponseType.PLAYER_ANSWERED:
-        // Update the player's answered status in game state
         setGame(prev => {
           if (!prev) return prev
           return {
             ...prev,
             players: {
               ...prev.players,
-              [message.data.uid]: {
-                ...prev.players[message.data.uid],
-                ...message.data
-              }
+              [message.data.uid]: { ...prev.players[message.data.uid], ...message.data }
             }
           }
         })
@@ -295,13 +267,11 @@ function Host() {
     }
   }
 
-  // Helper: get current question object
   const getCurrentQuestion = () => {
     if (!game || !game.questions || game.questions.length === 0) return null
     return game.questions[game.questions.length - 1]
   }
 
-  // Render question display based on game type
   const renderQuestionContent = (question, isReveal = false) => {
     if (!question) return null
     const gameType = game.game_type
@@ -354,21 +324,6 @@ function Host() {
         )
       }
 
-      case 'word-search':
-        return (
-          <div className="word-search-host">
-            <div className="word-search-grid">
-              {game.data?.puzzle?.map((row, rIdx) => (
-                <div key={rIdx} className="word-search-row">
-                  {row.map((letter, cIdx) => (
-                    <div key={cIdx} className="word-search-cell">{letter}</div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-        )
-
       case 'scramble':
         return (
           <div className="scramble-host">
@@ -399,7 +354,6 @@ function Host() {
     }
   }
 
-  // Types where the main area is just text (no visual grid/cards) — word bank goes below question
   const isTextOnlyType = () => {
     const t = game.game_type
     return t === 'scramble' || t === 'fill-the-gaps' || (t !== 'crossword' && t !== 'multiple-choice' && t !== 'matching' && t !== 'word-search')
@@ -421,26 +375,96 @@ function Host() {
     )
   }
 
-  // Get the question text to show in the question box (for types that need it)
   const getQuestionBoxText = (question) => {
     if (!question) return ''
     const gameType = game.game_type
     switch (gameType) {
-      case 'crossword':
-        return question.text // the clue
-      case 'multiple-choice':
-        return question.text
-      case 'scramble':
-        return 'Unscramble this word!'
-      case 'fill-the-gaps':
-        return 'Fill in the blank!'
-      case 'matching':
-        return 'Match the pair!'
-      case 'word-search':
-        return `Find the word: ${question.text}`
-      default:
-        return question.text
+      case 'crossword': return question.text
+      case 'multiple-choice': return question.text
+      case 'scramble': return 'Unscramble this word!'
+      case 'fill-the-gaps': return 'Fill in the blank!'
+      case 'matching': return 'Match the pair!'
+      case 'word-search': return `Find the word: ${question.text}`
+      default: return question.text
     }
+  }
+
+  // ── Word search host view ──
+  const renderWordSearchHost = () => {
+    const grid = game.data?.grid
+    const foundWords = game.data?.found_words || {}
+    const questions = game.questions || []
+    // Build word list: from questions if available, otherwise from found_words + word_bank
+    let allWords = questions.map(q => q.text)
+    if (allWords.length === 0 && game.data?.word_bank) {
+      allWords = game.data.word_bank
+    }
+    // Also include any found words not in the list
+    Object.keys(foundWords).forEach(w => {
+      if (!allWords.some(aw => aw.toLowerCase() === w)) {
+        allWords.push(w)
+      }
+    })
+    const foundCount = Object.keys(foundWords).length
+    const totalCount = allWords.length || foundCount
+
+    return (
+      <>
+        <div className="host-header">
+          <div className="game-code-small">{gameCode}</div>
+          <img src={Logo} alt="Logo" className="host-logo" />
+          <span>{foundCount}/{totalCount} words found</span>
+        </div>
+
+        <div className="host-game-layout">
+          <div className="host-main">
+            {grid && (
+              <WordSearchGrid
+                grid={grid}
+                foundWords={foundWords}
+                interactive={false}
+              />
+            )}
+          </div>
+
+          <div className="host-sidebar">
+            <div className="top-players">
+              <h3>Top Players</h3>
+              {top3Players.map((p, idx) => (
+                <div
+                  key={p.uid}
+                  className={`top-player-item ${idx === 0 ? 'gold' : idx === 1 ? 'silver' : 'bronze'}`}
+                >
+                  <span>{p.name}</span>
+                  <span>{p.score}</span>
+                </div>
+              ))}
+              {players.length > 3 && (
+                <div style={{ textAlign: 'center', marginTop: '8px', fontSize: '12px', color: '#666' }}>
+                  +{players.length - 3} more
+                </div>
+              )}
+            </div>
+
+            <div className="ws-word-list">
+              <h3>Words</h3>
+              {allWords.map((word, idx) => {
+                const wordLower = word.toLowerCase()
+                const found = foundWords[wordLower]
+                return (
+                  <div key={idx} className={`ws-word-item ${found ? 'ws-word-found' : ''}`}>
+                    <span>{word}</span>
+                    {found && <span className="ws-word-finder">{found.finder_name}</span>}
+                  </div>
+                )
+              })}
+            </div>
+
+            <button className="btn-end-game" onClick={endGame}>End Game</button>
+          </div>
+        </div>
+      </>
+    )
   }
 
   if (finalScores) {
@@ -479,6 +503,7 @@ function Host() {
   const top3Players = sortedPlayers.slice(0, 3)
   const currentQuestion = getCurrentQuestion()
   const answeredCount = players.filter(p => p.answered).length
+  const isWordSearch = game.game_type === 'word-search'
 
   return (
     <div className="container">
@@ -531,6 +556,8 @@ function Host() {
           {error && <div className="status error">{error}</div>}
         </div>
       )}
+
+      {game.state === GameState.ACTIVE && isWordSearch && renderWordSearchHost()}
 
       {game.state === GameState.WAITING_FOR_ANSWER && (
         <>

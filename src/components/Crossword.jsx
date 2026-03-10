@@ -25,10 +25,9 @@ function Crossword({ gridData, questions = [], answers = [], currentRound = -1 }
     const grid = Array(rows).fill(null).map((_, r) =>
       Array(cols).fill(null).map((_, c) => {
         const cell = crossword[r]?.[c] ?? ''
-        // "" = empty (not part of crossword), "*" = letter cell, " " = space separator
-        // Actual letters in the grid are active cells; "", "*", " " are not
-        const isActive = cell !== '' && cell !== ' ' && cell !== '*'
-        return { active: isActive, letter: null, highlight: false }
+        // "*" = letter cell (active), "-" = dash cell (rendered as dash), "" = empty, " " = space separator
+        const isActive = cell === '*' || cell === '-'
+        return { active: isActive, letter: cell === '-' ? '-' : null, highlight: false, isDash: cell === '-' }
       })
     )
 

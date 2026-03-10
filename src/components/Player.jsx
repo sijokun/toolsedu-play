@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { API_URL, WS_URL } from '../config'
+import WordSearchGrid from './WordSearchGrid'
 
 const GameState = {
   WAITING_FOR_PLAYERS: "waiting_for_players",
   WAITING_FOR_ANSWER: "waiting_for_answer",
+  ACTIVE: "active",
   ROUND_FINISHED: "round_finished",
   FINISHED: "finished"
 }
@@ -18,6 +20,7 @@ const ResponseType = {
   ANSWER: "answer",
   ROUND_END_TIMER: "round_end_timer",
   PLAYER_ANSWERED: "player_answered",
+  WORD_FOUND: "word_found",
   UNKNOWN: "unknown"
 }
 
@@ -38,6 +41,7 @@ function Player() {
   const [answered, setAnswered] = useState(false)
   const [correctAnswer, setCorrectAnswer] = useState(null)
   const [joining, setJoining] = useState(false)
+  const [wsStatus, setWsStatus] = useState(null) // for word search feedback
   const wsRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
   const timerIntervalRef = useRef(null)
@@ -49,7 +53,6 @@ function Player() {
 
   useEffect(() => {
     shouldConnectRef.current = true
-
     if (params.gameCode && params.uid) {
       shouldConnectRef.current = true
       setJoined(true)
@@ -57,49 +60,29 @@ function Player() {
       setStatus('Reconnecting...')
       connectWebSocket(params.gameCode, params.uid)
     }
-
     return () => {
       shouldConnectRef.current = false
-      if (wsRef.current) {
-        wsRef.current.close(1000, 'Component unmounting')
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
-      }
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current)
-      }
+      if (wsRef.current) wsRef.current.close(1000, 'Component unmounting')
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Live timer effect
   useEffect(() => {
     if (roundEndTimestamp) {
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current)
-      }
-
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
       const updateTimer = () => {
         const now = Math.floor(Date.now() / 1000)
         const remaining = roundEndTimestamp - now
         setRoundTimer(remaining > 0 ? remaining : 0)
       }
-
       updateTimer()
       timerIntervalRef.current = setInterval(updateTimer, 1000)
-
-      return () => {
-        if (timerIntervalRef.current) {
-          clearInterval(timerIntervalRef.current)
-        }
-      }
+      return () => { if (timerIntervalRef.current) clearInterval(timerIntervalRef.current) }
     } else {
       setRoundTimer(null)
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current)
-        timerIntervalRef.current = null
-      }
+      if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null }
     }
   }, [roundEndTimestamp])
 
@@ -112,11 +95,7 @@ function Player() {
       const response = await fetch(
         `${API_URL}/join/${gameCode.trim().toUpperCase()}?player_name=${encodeURIComponent(playerName)}`
       , { method: 'POST' })
-
-      if (!response.ok) {
-        throw new Error('Failed to join game')
-      }
-
+      if (!response.ok) throw new Error('Failed to join game')
       const data = await response.json()
       setPlayer(data)
       setJoined(true)
@@ -133,13 +112,10 @@ function Player() {
 
   const connectWebSocket = (code, uid) => {
     if (!shouldConnectRef.current) return
-
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return
-
     if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
       wsRef.current.close(1000, 'Reconnecting')
     }
-
     const ws = new WebSocket(`${WS_URL}/ws/${code}?uid=${uid}`)
     wsRef.current = ws
     wsConnectedRef.current = false
@@ -150,45 +126,28 @@ function Player() {
       retryCountRef.current = 0
       setError(null)
     }
-
     ws.onmessage = (event) => {
       if (!event.data) return
-      try {
-        const message = JSON.parse(event.data)
-        handleMessage(message)
-      } catch (e) {
-        console.log('Non-JSON message:', event.data)
-      }
+      try { handleMessage(JSON.parse(event.data)) } catch (e) { console.log('Non-JSON message:', event.data) }
     }
-
-    ws.onerror = () => {
-      setError('Connection error')
-    }
-
+    ws.onerror = () => setError('Connection error')
     ws.onclose = (event) => {
       if (!wsConnectedRef.current && shouldConnectRef.current) {
         if (!hasEverConnectedRef.current) {
           retryCountRef.current++
-
           if (retryCountRef.current >= MAX_INITIAL_RETRIES) {
             setError('Game not found. Redirecting...')
             setTimeout(() => leaveGame(), 1500)
             return
           }
-
           setError(`Connection failed, retrying... (${retryCountRef.current}/${MAX_INITIAL_RETRIES})`)
-          reconnectTimeoutRef.current = setTimeout(() => {
-            connectWebSocket(code, uid)
-          }, 1000)
+          reconnectTimeoutRef.current = setTimeout(() => connectWebSocket(code, uid), 1000)
           return
         }
       }
-
       if (shouldConnectRef.current && event.code !== 1000 && event.code !== 1001) {
         setError('Connection lost, reconnecting...')
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connectWebSocket(code, uid)
-        }, 1000)
+        reconnectTimeoutRef.current = setTimeout(() => connectWebSocket(code, uid), 1000)
       }
     }
   }
@@ -202,7 +161,6 @@ function Player() {
         if (message.data.state === GameState.WAITING_FOR_PLAYERS) {
           setStatus('Waiting for players...')
         }
-        // Restore player info from game state on reconnect
         if (player && message.data.players?.[player.uid]) {
           setPlayer(message.data.players[player.uid])
         }
@@ -214,10 +172,7 @@ function Player() {
         }
         setGame(prev => ({
           ...prev,
-          players: {
-            ...prev?.players,
-            [message.data.uid]: message.data
-          }
+          players: { ...prev?.players, [message.data.uid]: message.data }
         }))
         break
 
@@ -233,31 +188,59 @@ function Player() {
 
       case ResponseType.ANSWER:
         if (message.data.correct) {
-          setStatus(`Correct! +${message.data.score_delta} points`)
-          setAnswered(true)
-          setPlayer(prev => prev ? ({
-            ...prev,
-            score: prev.score + message.data.score_delta
-          }) : prev)
+          // For word search, don't lock out — player can keep finding words
+          if (game?.game_type === 'word-search') {
+            setWsStatus({ type: 'success', text: `Correct! +${message.data.score_delta} point` })
+            setPlayer(prev => prev ? ({ ...prev, score: prev.score + message.data.score_delta }) : prev)
+            // Clear after 2 seconds
+            setTimeout(() => setWsStatus(null), 2000)
+          } else {
+            setStatus(`Correct! +${message.data.score_delta} points`)
+            setAnswered(true)
+            setPlayer(prev => prev ? ({ ...prev, score: prev.score + message.data.score_delta }) : prev)
+          }
         } else {
-          setStatus(`Wrong! ${message.data.message}`)
-          setAnswered(false)
-          setAnswer('')
+          if (game?.game_type === 'word-search') {
+            setWsStatus({ type: 'error', text: message.data.message })
+            setTimeout(() => setWsStatus(null), 2000)
+          } else {
+            setStatus(`Wrong! ${message.data.message}`)
+            setAnswered(false)
+            setAnswer('')
+          }
+        }
+        break
+
+      case ResponseType.WORD_FOUND:
+        setGame(prev => {
+          if (!prev) return prev
+          const newFound = { ...(prev.data?.found_words || {}) }
+          newFound[message.data.word] = {
+            finder_name: message.data.finder_name,
+            coords: message.data.coords
+          }
+          const newPlayers = message.data.players.reduce((acc, p) => { acc[p.uid] = p; return acc }, {})
+          return {
+            ...prev,
+            data: { ...prev.data, found_words: newFound },
+            players: newPlayers
+          }
+        })
+        // Update player score from leaderboard
+        if (player) {
+          const me = message.data.players.find(p => p.uid === player.uid)
+          if (me) setPlayer(me)
         }
         break
 
       case ResponseType.PLAYER_ANSWERED:
-        // Update the player's answered status in game state
         setGame(prev => {
           if (!prev) return prev
           return {
             ...prev,
             players: {
               ...prev.players,
-              [message.data.uid]: {
-                ...prev.players[message.data.uid],
-                ...message.data
-              }
+              [message.data.uid]: { ...prev.players[message.data.uid], ...message.data }
             }
           }
         })
@@ -272,16 +255,11 @@ function Player() {
         setGame(prev => ({
           ...prev,
           state: GameState.ROUND_FINISHED,
-          players: message.data.players.reduce((acc, p) => {
-            acc[p.uid] = p
-            return acc
-          }, {})
+          players: message.data.players.reduce((acc, p) => { acc[p.uid] = p; return acc }, {})
         }))
         if (player) {
           const myPlayer = message.data.players.find(p => p.uid === player.uid)
-          if (myPlayer) {
-            setPlayer(myPlayer)
-          }
+          if (myPlayer) setPlayer(myPlayer)
         }
         break
 
@@ -301,29 +279,14 @@ function Player() {
 
   const leaveGame = () => {
     shouldConnectRef.current = false
-    if (wsRef.current) {
-      wsRef.current.close(1000, 'Player leaving')
-      wsRef.current = null
-    }
+    if (wsRef.current) { wsRef.current.close(1000, 'Player leaving'); wsRef.current = null }
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
-    setGame(null)
-    setJoined(false)
-    setPlayer(null)
-    setGameCode('')
-    setPlayerName('')
-    setAnswer('')
-    setStatus('')
-    setError(null)
-    setFinalScores(null)
-    setRoundTimer(null)
-    setRoundEndTimestamp(null)
-    setAnswered(false)
-    setCorrectAnswer(null)
-    setJoining(false)
-    wsConnectedRef.current = false
-    hasEverConnectedRef.current = false
-    retryCountRef.current = 0
+    setGame(null); setJoined(false); setPlayer(null); setGameCode(''); setPlayerName('')
+    setAnswer(''); setStatus(''); setError(null); setFinalScores(null)
+    setRoundTimer(null); setRoundEndTimestamp(null); setAnswered(false)
+    setCorrectAnswer(null); setJoining(false); setWsStatus(null)
+    wsConnectedRef.current = false; hasEverConnectedRef.current = false; retryCountRef.current = 0
     window.history.replaceState(null, '', '/player')
   }
 
@@ -342,36 +305,30 @@ function Player() {
     }
   }
 
-  // Helper: get current question object { text, data }
+  const submitWordSearchCoords = (coords) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(coords)
+    }
+  }
+
   const getCurrentQuestion = () => {
     if (!game || !game.questions || game.questions.length === 0) return null
     return game.questions[game.questions.length - 1]
   }
 
-  // Render question display text
   const getQuestionDisplay = (question) => {
     if (!question) return ''
-    const gameType = game.game_type
-
-    switch (gameType) {
-      case 'crossword':
-        return question.text
-      case 'multiple-choice':
-        return question.text
-      case 'scramble':
-        return null // handled in renderAnswerInput
-      case 'fill-the-gaps':
-        return null // handled in renderAnswerInput
-      case 'matching':
-        return question.text
-      case 'word-search':
-        return `Find: ${question.text}`
-      default:
-        return question.text
+    switch (game.game_type) {
+      case 'crossword': return question.text
+      case 'multiple-choice': return question.text
+      case 'scramble': return null
+      case 'fill-the-gaps': return null
+      case 'matching': return question.text
+      case 'word-search': return `Find: ${question.text}`
+      default: return question.text
     }
   }
 
-  // Render the answer input area based on game type
   const renderAnswerInput = (question) => {
     if (!question) return null
     const gameType = game.game_type
@@ -451,25 +408,6 @@ function Player() {
           </>
         )
 
-      case 'word-search':
-        return (
-          <>
-            {game.data?.puzzle && (
-              <div className="word-search-player">
-                {game.data.puzzle.map((row, rIdx) => (
-                  <div key={rIdx} className="word-search-row-player">
-                    {row.map((letter, cIdx) => (
-                      <div key={cIdx} className="word-search-cell-player">{letter}</div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
-            {renderWrongStatus()}
-            {renderTextInput('Type the word...')}
-          </>
-        )
-
       case 'crossword':
       default:
         return (
@@ -494,7 +432,7 @@ function Player() {
         type="text"
         placeholder={placeholder}
         value={answer}
-        onChange={(e) => setAnswer(e.target.value)}
+        onChange={(e) => setAnswer(e.target.value.replace(/ /g, '-'))}
         required
         autoFocus
         autoComplete="off"
@@ -503,6 +441,60 @@ function Player() {
       <button type="submit" className="btn-green">Submit</button>
     </form>
   )
+
+  // ── Word search player view ──
+  const renderWordSearchPlayer = () => {
+    const grid = game.data?.grid
+    const foundWords = game.data?.found_words || {}
+    const questions = game.questions || []
+    let allWords = questions.map(q => q.text)
+    if (allWords.length === 0 && game.data?.word_bank) {
+      allWords = game.data.word_bank
+    }
+    Object.keys(foundWords).forEach(w => {
+      if (!allWords.some(aw => aw.toLowerCase() === w)) {
+        allWords.push(w)
+      }
+    })
+    const foundCount = Object.keys(foundWords).length
+    const totalCount = allWords.length || foundCount
+
+    return (
+      <>
+        <div className="ws-progress-player">
+          {foundCount}/{totalCount} words found
+        </div>
+
+        {wsStatus && (
+          <div className={`player-status ${wsStatus.type === 'success' ? 'success' : 'error'}`}>
+            {wsStatus.text}
+          </div>
+        )}
+
+        {grid && (
+          <WordSearchGrid
+            grid={grid}
+            foundWords={foundWords}
+            onSelect={submitWordSearchCoords}
+            interactive={true}
+            playerUid={player?.uid}
+          />
+        )}
+
+        <div className="ws-words-player">
+          {allWords.map((word, idx) => {
+            const wordLower = word.toLowerCase()
+            const found = foundWords[wordLower]
+            return (
+              <span key={idx} className={`ws-word-tag ${found ? 'ws-word-tag-found' : ''}`}>
+                {word}
+              </span>
+            )
+          })}
+        </div>
+      </>
+    )
+  }
 
   const myRank = finalScores ? finalScores.findIndex(p => p.uid === player?.uid) + 1 : 0
 
@@ -513,7 +505,6 @@ function Player() {
           <span className="player-name">Game Over</span>
           <span className="player-score">{player?.score || 0}</span>
         </div>
-
         <div className="player-main">
           {myRank > 0 && (
             <div className="player-rank">
@@ -521,7 +512,6 @@ function Player() {
               <div className="rank-label">Your Final Rank</div>
             </div>
           )}
-
           <div className="player-leaderboard">
             {finalScores.map((p, idx) => (
               <div
@@ -534,6 +524,7 @@ function Player() {
             ))}
           </div>
         </div>
+        <button className="player-leave-btn" onClick={leaveGame}>Leave Game</button>
       </div>
     )
   }
@@ -545,27 +536,13 @@ function Player() {
           <h1 style={{ fontSize: '32px', marginBottom: '12px', color: 'white', fontWeight: '900' }}>Join Game!</h1>
           <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '16px' }}>Enter the PIN shown on screen</p>
         </div>
-
         <form onSubmit={joinGame} className="join-form">
-          <input
-            type="text"
-            placeholder="Game PIN"
-            value={gameCode}
-            onChange={(e) => setGameCode(e.target.value.toUpperCase())}
-            required
-            autoComplete="off"
-          />
-          <input
-            type="text"
-            placeholder="Nickname"
-            value={playerName}
-            onChange={(e) => setPlayerName(e.target.value)}
-            required
-            style={{ textTransform: 'none' }}
-          />
+          <input type="text" placeholder="Game PIN" value={gameCode}
+            onChange={(e) => setGameCode(e.target.value.toUpperCase())} required autoComplete="off" />
+          <input type="text" placeholder="Nickname" value={playerName}
+            onChange={(e) => setPlayerName(e.target.value)} required style={{ textTransform: 'none' }} />
           <button type="submit" disabled={joining}>{joining ? 'Joining...' : 'Enter'}</button>
         </form>
-
         {error && <div className="player-status error">{error}</div>}
       </div>
     )
@@ -580,11 +557,7 @@ function Player() {
         </div>
         <div className="player-waiting-screen">
           <p>{status}</p>
-          <div className="player-waiting-dots">
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
+          <div className="player-waiting-dots"><span></span><span></span><span></span></div>
         </div>
         {error && <div className="player-status error">{error}</div>}
       </div>
@@ -595,13 +568,12 @@ function Player() {
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score)
   const currentRank = sortedPlayers.findIndex(p => p.uid === player?.uid) + 1
   const currentQuestion = getCurrentQuestion()
+  const isWordSearch = game.game_type === 'word-search'
 
   return (
     <div className="player-container">
       {roundTimer !== null && roundTimer > 0 && (
-        <div className="timer">
-          ⏱ {roundTimer}s
-        </div>
+        <div className="timer">⏱ {roundTimer}s</div>
       )}
 
       <div className="player-header">
@@ -614,13 +586,11 @@ function Player() {
           <div className="player-waiting-screen">
             <h2>Waiting for host to start...</h2>
             <p style={{ marginBottom: '20px' }}>{players.length} player{players.length !== 1 ? 's' : ''} joined</p>
-            <div className="player-waiting-dots">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
+            <div className="player-waiting-dots"><span></span><span></span><span></span></div>
           </div>
         )}
+
+        {game.state === GameState.ACTIVE && isWordSearch && renderWordSearchPlayer()}
 
         {game.state === GameState.WAITING_FOR_ANSWER && (
           <>
@@ -629,7 +599,6 @@ function Player() {
                 {getQuestionDisplay(currentQuestion)}
               </div>
             )}
-
             {answered ? (
               <div className="player-correct-badge">
                 <div className="checkmark">✓</div>
@@ -645,14 +614,12 @@ function Player() {
           <div className="player-round-result">
             <p>The answer was</p>
             <div className="answer-reveal">{correctAnswer}</div>
-
             {currentRank > 0 && (
               <div className="player-rank">
                 <div className="rank-number">#{currentRank}</div>
                 <div className="rank-label">Current Rank</div>
               </div>
             )}
-
             <div className="player-leaderboard">
               {sortedPlayers.slice(0, 5).map((p, idx) => (
                 <div
@@ -664,7 +631,6 @@ function Player() {
                 </div>
               ))}
             </div>
-
             <div className="player-status waiting">Waiting for next round...</div>
           </div>
         )}
