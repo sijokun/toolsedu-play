@@ -4,9 +4,6 @@ import { useWebHaptics } from "web-haptics/react";
 import { API_URL, WS_URL } from '../config'
 import WordSearchGrid from './WordSearchGrid'
 
-
-const { trigger } = useWebHaptics();
-
 const GameState = {
   WAITING_FOR_PLAYERS: "waiting_for_players",
   WAITING_FOR_ANSWER: "waiting_for_answer",
@@ -31,6 +28,7 @@ const ResponseType = {
 function Player() {
   const params = useParams()
   const navigate = useNavigate()
+  const { trigger } = useWebHaptics()
   const [gameCode, setGameCode] = useState(params.gameCode && !params.uid ? params.gameCode : '')
   const [playerName, setPlayerName] = useState('')
   const [joined, setJoined] = useState(!!params.gameCode && !!params.uid)
