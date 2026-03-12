@@ -448,7 +448,11 @@ function Host() {
 
             <div className="ws-word-list">
               <h3>Words</h3>
-              {allWords.map((word, idx) => {
+              {[...allWords].sort((a, b) => {
+                const aFound = !!foundWords[a.toLowerCase()]
+                const bFound = !!foundWords[b.toLowerCase()]
+                return aFound - bFound
+              }).map((word, idx) => {
                 const wordLower = word.toLowerCase()
                 const found = foundWords[wordLower]
                 return (
@@ -468,22 +472,41 @@ function Host() {
   }
 
   if (finalScores) {
+    const podiumOrder = [finalScores[1], finalScores[0], finalScores[2]].filter(Boolean)
+    const rest = finalScores.slice(3)
     return (
-      <div className="container">
-        <h1>Game Finished!</h1>
-        <div className="leaderboard">
-          <h2>Final Scores</h2>
-          {finalScores.map((player, idx) => (
-            <div
-              key={player.uid}
-              className={`leaderboard-item ${idx === 0 ? 'first' : idx === 1 ? 'second' : idx === 2 ? 'third' : ''}`}
-            >
-              <span>{idx + 1}. {player.name}</span>
-              <span>{player.score} points</span>
-            </div>
-          ))}
+      <div className="host-gameover">
+        <h1 className="host-gameover-title">Game Over</h1>
+
+        <div className="host-podium">
+          {podiumOrder.map((p) => {
+            const rank = finalScores.indexOf(p) + 1
+            const heights = { 1: 160, 2: 120, 3: 90 }
+            const labels = { 1: 'gold', 2: 'silver', 3: 'bronze' }
+            return (
+              <div key={p.uid} className={`host-podium-slot host-podium-${labels[rank]}`}>
+                <div className="host-podium-name">{p.name}</div>
+                <div className="host-podium-score">{p.score} pts</div>
+                <div className="host-podium-bar" style={{ height: `${heights[rank]}px` }}>
+                  <span className="host-podium-rank">#{rank}</span>
+                </div>
+              </div>
+            )
+          })}
         </div>
-        <button onClick={() => navigate('/')}>Back to Menu</button>
+
+        {rest.length > 0 && (
+          <div className="host-gameover-rest">
+            {rest.map((p, idx) => (
+              <div key={p.uid} className="host-gameover-row">
+                <span>{idx + 4}. {p.name}</span>
+                <span>{p.score} pts</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button className="host-gameover-btn" onClick={() => navigate('/')}>Back to Menu</button>
       </div>
     )
   }
