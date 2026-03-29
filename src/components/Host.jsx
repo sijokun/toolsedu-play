@@ -464,6 +464,7 @@ function Host() {
               })}
             </div>
 
+            <button className="btn-next-round" onClick={nextRound}>Next</button>
             <button className="btn-end-game" onClick={endGame}>End Game</button>
           </div>
         </div>
@@ -481,7 +482,7 @@ function Host() {
         <div className="host-podium">
           {podiumOrder.map((p) => {
             const rank = finalScores.indexOf(p) + 1
-            const heights = { 1: 160, 2: 120, 3: 90 }
+            const heights = { 1: 200, 2: 150, 3: 110 }
             const labels = { 1: 'gold', 2: 'silver', 3: 'bronze' }
             return (
               <div key={p.uid} className={`host-podium-slot host-podium-${labels[rank]}`}>
@@ -618,6 +619,7 @@ function Host() {
                 )}
               </div>
               {!isTextOnlyType() && renderWordBank()}
+              <button className="btn-next-round" onClick={nextRound}>Next</button>
               <button className="btn-end-game" onClick={endGame}>End Game</button>
             </div>
           </div>
