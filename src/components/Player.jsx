@@ -22,6 +22,7 @@ const ResponseType = {
   ROUND_END_TIMER: "round_end_timer",
   PLAYER_ANSWERED: "player_answered",
   WORD_FOUND: "word_found",
+  MATCH_FOUND: "match_found",
   UNKNOWN: "unknown"
 }
 
@@ -43,7 +44,8 @@ function Player() {
   const [answered, setAnswered] = useState(false)
   const [correctAnswer, setCorrectAnswer] = useState(null)
   const [joining, setJoining] = useState(false)
-  const [wsStatus, setWsStatus] = useState(null) // for word search feedback
+  const [wsStatus, setWsStatus] = useState(null) // for word search / matching feedback
+  const [matchSelection, setMatchSelection] = useState(null) // { side: 'left'|'right', value: number(1-based) | letter }
   const wsRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
   const timerIntervalRef = useRef(null)
@@ -51,6 +53,11 @@ function Player() {
   const wsConnectedRef = useRef(false)
   const hasEverConnectedRef = useRef(false)
   const retryCountRef = useRef(0)
+  const matchBoardRef = useRef(null)
+  const canvasRef = useRef(null)
+  const dragRef = useRef(null)
+  const dragTargetRef = useRef(null)
+  const preventClickRef = useRef(false)
   const handleMessageRef = useRef(null)
   const MAX_INITIAL_RETRIES = 5
 
@@ -230,11 +237,10 @@ function Player() {
       case ResponseType.ANSWER:
         if (message.data.correct) {
           onCorrectAnswer(message.data.score_delta)
-          // For word search, don't lock out — player can keep finding words
-          if (game?.game_type === 'word-search') {
+          // For free-for-all games, don't lock out — player can keep going
+          if (game?.game_type === 'word-search' || game?.game_type === 'matching') {
             setWsStatus({ type: 'success', text: `Correct! +${message.data.score_delta} point` })
             setPlayer(prev => prev ? ({ ...prev, score: prev.score + message.data.score_delta }) : prev)
-            // Clear after 2 seconds
             setTimeout(() => setWsStatus(null), 2000)
           } else {
             setStatus(`Correct! +${message.data.score_delta} points`)
@@ -243,7 +249,7 @@ function Player() {
           }
         } else {
           onIncorrectAnswer(message.data.message)
-          if (game?.game_type === 'word-search') {
+          if (game?.game_type === 'word-search' || game?.game_type === 'matching') {
             setWsStatus({ type: 'error', text: message.data.message })
             setTimeout(() => setWsStatus(null), 2000)
           } else {
@@ -270,6 +276,30 @@ function Player() {
           }
         })
         // Update player score from leaderboard
+        if (player) {
+          const me = message.data.players.find(p => p.uid === player.uid)
+          if (me) setPlayer(me)
+        }
+        break
+
+      case ResponseType.MATCH_FOUND:
+        setGame(prev => {
+          if (!prev) return prev
+          const newFound = { ...(prev.data?.found_pairs || {}) }
+          const nextIdx = String(Object.keys(newFound).length)
+          newFound[nextIdx] = {
+            finder_uid: message.data.finder_uid || '',
+            finder_name: message.data.finder_name,
+            left: message.data.left,
+            right: message.data.right
+          }
+          const newPlayers = message.data.players.reduce((acc, p) => { acc[p.uid] = p; return acc }, {})
+          return {
+            ...prev,
+            data: { ...prev.data, found_pairs: newFound },
+            players: newPlayers
+          }
+        })
         if (player) {
           const me = message.data.players.find(p => p.uid === player.uid)
           if (me) setPlayer(me)
@@ -398,30 +428,6 @@ function Player() {
           </>
         )
 
-      case 'matching': {
-        const usedAnswers = game.answers || []
-        return (
-          <>
-            {renderWrongStatus()}
-            <div className="matching-options-player">
-              {game.data?.options?.map((option, idx) => {
-                const isUsed = usedAnswers.includes(option)
-                return (
-                  <button
-                    key={idx}
-                    className={`matching-option-btn ${isUsed ? 'matching-used' : ''}`}
-                    onClick={() => submitChoice(option)}
-                    disabled={isUsed}
-                  >
-                    {option}
-                  </button>
-                )
-              })}
-            </div>
-          </>
-        )
-      }
-
       case 'scramble':
         return (
           <>
@@ -486,6 +492,227 @@ function Player() {
       <button type="submit" className="btn-green">Submit</button>
     </form>
   )
+
+  const selectMatchItem = (side, value) => {
+    if (preventClickRef.current) return
+    if (!matchSelection) {
+      setMatchSelection({ side, value })
+      return
+    }
+    if (matchSelection.side === side) {
+      setMatchSelection(matchSelection.value === value ? null : { side, value })
+      return
+    }
+    const idx = side === 'left' ? value : matchSelection.value
+    const letter = side === 'right' ? value : matchSelection.value
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(`${idx}:${letter}`)
+    }
+    setMatchSelection(null)
+  }
+
+  // ── Matching drag-to-connect ──
+  const drawDragLine = (startRect, touchX, touchY) => {
+    const canvas = canvasRef.current
+    const board = matchBoardRef.current
+    if (!canvas || !board) return
+    const boardRect = board.getBoundingClientRect()
+    canvas.width = boardRect.width
+    canvas.height = boardRect.height
+    const ctx = canvas.getContext('2d')
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    const sx = startRect.left + startRect.width / 2 - boardRect.left
+    const sy = startRect.top + startRect.height / 2 - boardRect.top
+    const ex = touchX - boardRect.left
+    const ey = touchY - boardRect.top
+    ctx.beginPath()
+    ctx.moveTo(sx, sy)
+    ctx.lineTo(ex, ey)
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.8)'
+    ctx.lineWidth = 3
+    ctx.lineCap = 'round'
+    ctx.stroke()
+  }
+
+  const clearDragLine = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
+  }
+
+  const handleMatchDragStart = (e, side, value) => {
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY
+    dragRef.current = {
+      side, value,
+      el: e.currentTarget,
+      startX: clientX,
+      startY: clientY,
+      moved: false
+    }
+    if (!e.touches) {
+      e.preventDefault()
+      document.addEventListener('mousemove', handleMatchDragMoveDoc)
+      document.addEventListener('mouseup', handleMatchDragEndDoc)
+    }
+  }
+
+  const handleMatchDragMoveImpl = (clientX, clientY, preventDefault) => {
+    if (!dragRef.current) return
+    const dx = clientX - dragRef.current.startX
+    const dy = clientY - dragRef.current.startY
+    if (!dragRef.current.moved && Math.sqrt(dx * dx + dy * dy) < 12) return
+    dragRef.current.moved = true
+    if (preventDefault) preventDefault()
+    drawDragLine(dragRef.current.el.getBoundingClientRect(), clientX, clientY)
+
+    const el = document.elementFromPoint(clientX, clientY)
+    const btn = el?.closest('.matching-player-item')
+    if (dragTargetRef.current && dragTargetRef.current !== btn) {
+      dragTargetRef.current.classList.remove('matching-player-drag-target')
+    }
+    if (btn && btn.dataset.side && btn.dataset.side !== dragRef.current.side) {
+      btn.classList.add('matching-player-drag-target')
+      dragTargetRef.current = btn
+    } else {
+      dragTargetRef.current = null
+    }
+  }
+
+  const handleMatchDragMove = (e) => {
+    handleMatchDragMoveImpl(e.touches[0].clientX, e.touches[0].clientY, () => e.preventDefault())
+  }
+
+  const handleMatchDragMoveDoc = (e) => {
+    handleMatchDragMoveImpl(e.clientX, e.clientY)
+  }
+
+  const handleMatchDragEndImpl = (clientX, clientY) => {
+    if (!dragRef.current) return
+    if (!dragRef.current.moved) {
+      dragRef.current = null
+      return false // tap — let onClick handle it
+    }
+    preventClickRef.current = true
+    setTimeout(() => { preventClickRef.current = false }, 100)
+
+    const el = document.elementFromPoint(clientX, clientY)
+    const btn = el?.closest('.matching-player-item')
+    if (btn && btn.dataset.side && btn.dataset.side !== dragRef.current.side) {
+      const targetValue = btn.dataset.value
+      const idx = dragRef.current.side === 'left' ? dragRef.current.value : targetValue
+      const letter = dragRef.current.side === 'right' ? dragRef.current.value : targetValue
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(`${idx}:${letter}`)
+      }
+    }
+    if (dragTargetRef.current) {
+      dragTargetRef.current.classList.remove('matching-player-drag-target')
+      dragTargetRef.current = null
+    }
+    clearDragLine()
+    dragRef.current = null
+    setMatchSelection(null)
+    return true
+  }
+
+  const handleMatchDragEnd = (e) => {
+    const touch = e.changedTouches[0]
+    handleMatchDragEndImpl(touch.clientX, touch.clientY)
+  }
+
+  const handleMatchDragEndDoc = (e) => {
+    document.removeEventListener('mousemove', handleMatchDragMoveDoc)
+    document.removeEventListener('mouseup', handleMatchDragEndDoc)
+    handleMatchDragEndImpl(e.clientX, e.clientY)
+  }
+
+  // ── Matching player view ──
+  const renderMatchingPlayer = () => {
+    const questions = game.questions || []
+    const options = game.data?.options || []
+    const foundPairsRaw = game.data?.found_pairs || {}
+    const foundPairs = Object.values(foundPairsRaw)
+    const foundCount = foundPairs.length
+    const totalCount = game.data?.pair_count || 0
+    const matchedLeft = new Set(foundPairs.map(p => p.left))
+    const matchedRight = new Set(foundPairs.map(p => p.right))
+
+    return (
+      <div className="matching-player-wrapper">
+        {wsStatus && (
+          <div className={`ws-toast ${wsStatus.type === 'success' ? 'ws-toast-success' : 'ws-toast-error'}`}>
+            {wsStatus.text}
+          </div>
+        )}
+
+        {matchSelection && (
+          <div className="matching-player-hint">
+            Now tap on the other side to match
+          </div>
+        )}
+
+        <div className="matching-progress-desktop">{foundCount}/{totalCount} matched</div>
+
+        <div className="matching-player-section">
+          <div className="matching-player-section-header">
+            <span>Left</span>
+            <span className="matching-progress-mobile">{foundCount}/{totalCount} matched</span>
+          </div>
+          <div className="matching-player-scroll">
+            {[...questions.map((q, idx) => ({ q, idx }))]
+              .sort((a, b) => (matchedLeft.has(a.q.text) ? 1 : 0) - (matchedLeft.has(b.q.text) ? 1 : 0))
+              .map(({ q, idx }) => {
+                const num = idx + 1
+                const isMatched = matchedLeft.has(q.text)
+                const isSelected = matchSelection?.side === 'left' && matchSelection.value === num
+                const isReady = matchSelection?.side === 'right' && !isMatched
+                return (
+                  <button
+                    key={idx}
+                    data-side="left"
+                    data-value={num}
+                    className={`matching-player-item matching-player-left ${isMatched ? 'matching-board-matched' : ''} ${isSelected ? 'matching-player-selected' : ''} ${isReady ? 'matching-player-ready' : ''}`}
+                    onClick={() => selectMatchItem('left', num)}
+                  >
+                    <span className="matching-board-label">{num}</span>
+                    <span className="matching-board-text">{q.text}</span>
+                  </button>
+                )
+              })}
+          </div>
+        </div>
+
+        <div className="matching-player-section">
+          <div className="matching-player-section-header">
+            <span>Right</span>
+          </div>
+          <div className="matching-player-scroll">
+            {[...options.map((opt, idx) => ({ opt, idx }))]
+              .sort((a, b) => (matchedRight.has(a.opt) ? 1 : 0) - (matchedRight.has(b.opt) ? 1 : 0))
+              .map(({ opt, idx }) => {
+                const letter = String.fromCharCode(65 + idx)
+                const isMatched = matchedRight.has(opt)
+                const isSelected = matchSelection?.side === 'right' && matchSelection.value === letter
+                const isReady = matchSelection?.side === 'left' && !isMatched
+                return (
+                  <button
+                    key={idx}
+                    data-side="right"
+                    data-value={letter}
+                    className={`matching-player-item matching-player-right ${isMatched ? 'matching-board-matched' : ''} ${isSelected ? 'matching-player-selected' : ''} ${isReady ? 'matching-player-ready' : ''}`}
+                    onClick={() => selectMatchItem('right', letter)}
+                  >
+                    <span className="matching-board-label">{letter}</span>
+                    <span className="matching-board-text">{opt}</span>
+                  </button>
+                )
+              })}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // ── Word search player view ──
   const renderWordSearchPlayer = () => {
@@ -614,6 +841,7 @@ function Player() {
   const currentRank = sortedPlayers.findIndex(p => p.uid === player?.uid) + 1
   const currentQuestion = getCurrentQuestion()
   const isWordSearch = game.game_type === 'word-search'
+  const isMatching = game.game_type === 'matching'
 
   return (
     <div className="player-container">
@@ -636,8 +864,9 @@ function Player() {
         )}
 
         {game.state === GameState.ACTIVE && isWordSearch && renderWordSearchPlayer()}
+        {(game.state === GameState.ACTIVE || game.state === GameState.WAITING_FOR_ANSWER) && isMatching && renderMatchingPlayer()}
 
-        {game.state === GameState.WAITING_FOR_ANSWER && (
+        {game.state === GameState.WAITING_FOR_ANSWER && !isMatching && (
           <>
             {getQuestionDisplay(currentQuestion) && (
               <div className="player-question">

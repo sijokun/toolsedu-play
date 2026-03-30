@@ -23,6 +23,7 @@ const ResponseType = {
   ROUND_END_TIMER: "round_end_timer",
   PLAYER_ANSWERED: "player_answered",
   WORD_FOUND: "word_found",
+  MATCH_FOUND: "match_found",
   UNKNOWN: "unknown"
 }
 
@@ -159,9 +160,15 @@ function Host() {
         } else if (message.data.state === GameState.WAITING_FOR_ANSWER) {
           setStatus(`Round ${message.data.round + 1} in progress`)
         } else if (message.data.state === GameState.ACTIVE) {
-          const found = Object.keys(message.data.data?.found_words || {}).length
-          const total = message.data.questions?.length || 0
-          setStatus(`Word Search — ${found}/${total} found`)
+          if (message.data.game_type === 'matching') {
+            const found = Object.keys(message.data.data?.found_pairs || {}).length
+            const total = message.data.data?.pair_count || 0
+            setStatus(`Matching — ${found}/${total} matched`)
+          } else {
+            const found = Object.keys(message.data.data?.found_words || {}).length
+            const total = message.data.questions?.length || 0
+            setStatus(`Word Search — ${found}/${total} found`)
+          }
         } else if (message.data.state === GameState.ROUND_FINISHED) {
           setStatus('Round finished!')
         } else {
@@ -205,6 +212,27 @@ function Host() {
           }
         })
         setStatus(`${message.data.finder_name} found "${message.data.word}"! (${message.data.found_count}/${message.data.total_count})`)
+        break
+
+      case ResponseType.MATCH_FOUND:
+        setGame(prev => {
+          if (!prev) return prev
+          const newFound = { ...(prev.data?.found_pairs || {}) }
+          const nextIdx = String(Object.keys(newFound).length)
+          newFound[nextIdx] = {
+            finder_uid: message.data.finder_uid || '',
+            finder_name: message.data.finder_name,
+            left: message.data.left,
+            right: message.data.right
+          }
+          const newPlayers = message.data.players.reduce((acc, p) => { acc[p.uid] = p; return acc }, {})
+          return {
+            ...prev,
+            data: { ...prev.data, found_pairs: newFound },
+            players: newPlayers
+          }
+        })
+        setStatus(`${message.data.finder_name} matched! (${message.data.found_count}/${message.data.total_count})`)
         break
 
       case ResponseType.ROUND_FINISHED:
@@ -302,28 +330,6 @@ function Host() {
           </div>
         )
 
-      case 'matching': {
-        const usedAnswers = game.answers || []
-        return (
-          <div className="matching-host">
-            <div className="matching-left-term">{question.text}</div>
-            <div className="matching-options">
-              {game.data?.options?.map((opt, idx) => {
-                const isUsed = usedAnswers.includes(opt) && opt !== correctAnswer
-                return (
-                  <div
-                    key={idx}
-                    className={`matching-option-card ${isReveal && opt === correctAnswer ? 'mc-correct' : ''} ${isUsed ? 'matching-used' : ''}`}
-                  >
-                    {opt}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )
-      }
-
       case 'scramble':
         return (
           <div className="scramble-host">
@@ -387,6 +393,79 @@ function Host() {
       case 'word-search': return `Find the word: ${question.text}`
       default: return question.text
     }
+  }
+
+  // ── Matching host view ──
+  const renderMatchingHost = () => {
+    const questions = game.questions || []
+    const options = game.data?.options || []
+    const foundPairsRaw = game.data?.found_pairs || {}
+    const foundPairs = Object.values(foundPairsRaw)
+    const foundCount = foundPairs.length
+    const totalCount = game.data?.pair_count || 0
+    const matchedLeft = new Set(foundPairs.map(p => p.left))
+    const matchedRight = new Set(foundPairs.map(p => p.right))
+    const pairByLeft = Object.fromEntries(foundPairs.map(p => [p.left, p]))
+
+    return (
+      <>
+        <div className="host-header">
+          <div className="game-code-small">{gameCode}</div>
+          <img src={Logo} alt="Logo" className="host-logo" />
+          <span>{foundCount}/{totalCount} pairs matched</span>
+        </div>
+
+        <div className="host-game-layout">
+          <div className="host-main">
+            <div className="matching-board">
+              {questions.map((q, idx) => {
+                const num = idx + 1
+                const isMatched = matchedLeft.has(q.text)
+                const pair = pairByLeft[q.text]
+                const opt = options[idx]
+                const letter = String.fromCharCode(65 + idx)
+                const optMatched = opt ? matchedRight.has(opt) : false
+                return [
+                  <div key={`l${idx}`} className={`matching-board-item ${isMatched ? 'matching-board-matched' : ''}`}>
+                    <span className="matching-board-label">{num}</span>
+                    <span className="matching-board-text">{q.text}</span>
+                    {pair && <span className="matching-board-pair">{pair.finder_name}</span>}
+                  </div>,
+                  opt ? (
+                    <div key={`r${idx}`} className={`matching-board-item ${optMatched ? 'matching-board-matched' : ''}`}>
+                      <span className="matching-board-label">{letter}</span>
+                      <span className="matching-board-text">{opt}</span>
+                    </div>
+                  ) : <div key={`r${idx}`} />
+                ]
+              })}
+            </div>
+          </div>
+
+          <div className="host-sidebar">
+            <div className="top-players">
+              <h3>Top Players</h3>
+              {top3Players.map((p, idx) => (
+                <div
+                  key={p.uid}
+                  className={`top-player-item ${idx === 0 ? 'gold' : idx === 1 ? 'silver' : 'bronze'}`}
+                >
+                  <span>{p.name}</span>
+                  <span>{p.score}</span>
+                </div>
+              ))}
+              {players.length > 3 && (
+                <div style={{ textAlign: 'center', marginTop: '8px', fontSize: '12px', color: '#666' }}>
+                  +{players.length - 3} more
+                </div>
+              )}
+            </div>
+
+            <button className="btn-end-game" onClick={endGame}>End Game</button>
+          </div>
+        </div>
+      </>
+    )
   }
 
   // ── Word search host view ──
@@ -464,7 +543,6 @@ function Host() {
               })}
             </div>
 
-            <button className="btn-next-round" onClick={nextRound}>Next</button>
             <button className="btn-end-game" onClick={endGame}>End Game</button>
           </div>
         </div>
@@ -528,6 +606,7 @@ function Host() {
   const currentQuestion = getCurrentQuestion()
   const answeredCount = players.filter(p => p.answered).length
   const isWordSearch = game.game_type === 'word-search'
+  const isMatching = game.game_type === 'matching'
 
   return (
     <div className="container">
@@ -582,8 +661,9 @@ function Host() {
       )}
 
       {game.state === GameState.ACTIVE && isWordSearch && renderWordSearchHost()}
+      {(game.state === GameState.ACTIVE || game.state === GameState.WAITING_FOR_ANSWER) && isMatching && renderMatchingHost()}
 
-      {game.state === GameState.WAITING_FOR_ANSWER && (
+      {game.state === GameState.WAITING_FOR_ANSWER && !isMatching && (
         <>
           <div className="host-header">
             <div className="game-code-small">{gameCode}</div>
