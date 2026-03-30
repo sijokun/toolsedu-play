@@ -69,7 +69,10 @@ function Host() {
 
     return () => {
       shouldConnectRef.current = false
-      if (wsRef.current) wsRef.current.close(1000, 'Component unmounting')
+      if (wsRef.current) {
+        wsRef.current.close(1000, 'Component unmounting')
+        wsRef.current = null
+      }
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
       if (autoNextTimeoutRef.current) clearInterval(autoNextTimeoutRef.current)
@@ -131,8 +134,10 @@ function Host() {
       if (!event.data) return
       try { handleMessage(JSON.parse(event.data)) } catch (e) { console.log('Non-JSON message:', event.data) }
     }
-    ws.onerror = () => setError('Connection error')
+    ws.onerror = () => { if (wsRef.current === ws) setError('Connection error') }
     ws.onclose = (event) => {
+      const isStale = wsRef.current !== ws
+      if (isStale) return
       if (!wsConnectedRef.current && shouldConnectRef.current) {
         if (connectionAttempts.current >= 3 && !isInitialConnection.current) {
           setError('Game not found. Redirecting...')
@@ -415,29 +420,37 @@ function Host() {
           <span>{foundCount}/{totalCount} pairs matched</span>
         </div>
 
-        <div className="host-game-layout">
-          <div className="host-main">
-            <div className="matching-board">
+        <div className="matching-host-layout">
+          <div className="matching-host-section">
+            <div className="matching-host-section-header">Left</div>
+            <div className="matching-host-scroll">
               {questions.map((q, idx) => {
                 const num = idx + 1
                 const isMatched = matchedLeft.has(q.text)
                 const pair = pairByLeft[q.text]
-                const opt = options[idx]
-                const letter = String.fromCharCode(65 + idx)
-                const optMatched = opt ? matchedRight.has(opt) : false
-                return [
-                  <div key={`l${idx}`} className={`matching-board-item ${isMatched ? 'matching-board-matched' : ''}`}>
+                return (
+                  <div key={idx} className={`matching-board-item ${isMatched ? 'matching-board-matched' : ''}`}>
                     <span className="matching-board-label">{num}</span>
                     <span className="matching-board-text">{q.text}</span>
                     {pair && <span className="matching-board-pair">{pair.finder_name}</span>}
-                  </div>,
-                  opt ? (
-                    <div key={`r${idx}`} className={`matching-board-item ${optMatched ? 'matching-board-matched' : ''}`}>
-                      <span className="matching-board-label">{letter}</span>
-                      <span className="matching-board-text">{opt}</span>
-                    </div>
-                  ) : <div key={`r${idx}`} />
-                ]
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="matching-host-section">
+            <div className="matching-host-section-header">Right</div>
+            <div className="matching-host-scroll">
+              {options.map((opt, idx) => {
+                const letter = String.fromCharCode(65 + idx)
+                const isMatched = matchedRight.has(opt)
+                return (
+                  <div key={idx} className={`matching-board-item ${isMatched ? 'matching-board-matched' : ''}`}>
+                    <span className="matching-board-label">{letter}</span>
+                    <span className="matching-board-text">{opt}</span>
+                  </div>
+                )
               })}
             </div>
           </div>

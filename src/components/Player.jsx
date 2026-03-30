@@ -72,7 +72,10 @@ function Player() {
     }
     return () => {
       shouldConnectRef.current = false
-      if (wsRef.current) wsRef.current.close(1000, 'Component unmounting')
+      if (wsRef.current) {
+        wsRef.current.close(1000, 'Component unmounting')
+        wsRef.current = null
+      }
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
     }
@@ -142,8 +145,9 @@ function Player() {
       if (!event.data) return
       try { handleMessageRef.current(JSON.parse(event.data)) } catch (e) { console.log('Non-JSON message:', event.data) }
     }
-    ws.onerror = () => setError('Connection error')
+    ws.onerror = () => { if (wsRef.current === ws) setError('Connection error') }
     ws.onclose = (event) => {
+      if (wsRef.current !== ws) return // stale socket, ignore
       if (!wsConnectedRef.current && shouldConnectRef.current) {
         if (!hasEverConnectedRef.current) {
           retryCountRef.current++
