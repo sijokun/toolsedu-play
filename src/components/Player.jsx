@@ -652,7 +652,7 @@ function Player() {
           </div>
         )}
 
-        <div className="matching-progress-desktop">{foundCount}/{totalCount} matched</div>
+        {/*<div className="matching-progress-desktop" >{foundCount}/{totalCount} matched</div>*/}
 
         <div className="matching-player-section">
           <div className="matching-player-section-header">

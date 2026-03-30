@@ -55,18 +55,18 @@ button {
   margin: 5px;
   text-transform: uppercase;
   letter-spacing: 1px;
-  box-shadow: 0 4px 0 #795febc1;
+  /*box-shadow: 0 4px 0 #795febc1;*/
   transition: all 0.1s ease;
 }
 
 button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 0 #2a4ac7;
+  box-shadow: 0 6px 0 #785feb;
 }
 
 button:active {
   transform: translateY(2px);
-  box-shadow: 0 2px 0 #2a4ac7;
+  box-shadow: 0 2px 0 #795febc1;
 }
 
 button:disabled {
@@ -1362,7 +1362,7 @@ input:focus {
 
 .matching-player-hint {
   position: fixed;
-  top: 60px;
+  top: 20px;
   left: 50%;
   transform: translateX(-50%);
   text-align: center;
@@ -1392,7 +1392,7 @@ input:focus {
   min-height: 0;
   max-height: calc((100vh - 110px) / 2);
   max-height: calc((100dvh - 110px) / 2);
-  background: rgba(0, 0, 0, 0.12);
+  background: white;
   border-radius: 12px;
   overflow: hidden;
 }
@@ -1438,15 +1438,15 @@ input:focus {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: rgba(255, 255, 255, 0.5);
+  color: #6b7280;
   flex-shrink: 0;
 }
 
 .matching-player-scroll {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 0 8px 8px;
+  gap: 8px;
+  padding: 5px 10px 10px;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
@@ -1458,10 +1458,10 @@ input:focus {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border: 2px solid rgba(255, 255, 255, 0.15);
+  border: none;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  color: white;
+  background: #f3f4f6;
+  color: #333;
   font-family: 'Montserrat', sans-serif;
   font-weight: 600;
   font-size: 14px;
@@ -1472,6 +1472,7 @@ input:focus {
   margin: 0;
   transition: all 0.15s;
   flex-shrink: 0;
+  box-shadow: none;
 }
 
 .matching-player-item .matching-board-label {
@@ -1488,14 +1489,12 @@ input:focus {
 }
 
 .matching-player-item:not(:disabled):not(.matching-board-matched):hover {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: #e5e7eb;
 }
 
 .matching-player-selected {
-  border-color: #fbbf24 !important;
-  background: rgba(251, 191, 36, 0.15) !important;
-  box-shadow: 0 0 12px rgba(251, 191, 36, 0.2);
+  background: #fef3c7 !important;
+  outline: 2px solid #fbbf24;
 }
 
 .matching-player-selected .matching-board-label {
@@ -1504,19 +1503,16 @@ input:focus {
 }
 
 .matching-player-ready:not(:disabled) {
-  border-color: rgba(255, 255, 255, 0.3);
-  background: rgba(255, 255, 255, 0.14);
+  background: #ede9fe;
 }
 
 .matching-player-ready:not(:disabled):hover {
-  background: rgba(255, 255, 255, 0.24);
-  border-color: white;
+  background: #ddd6fe;
 }
 
 .matching-player-item.matching-board-matched {
-  opacity: 0.4;
-  background: rgba(34, 197, 94, 0.08);
-  border-color: rgba(34, 197, 94, 0.2);
+  opacity: 0.5;
+  background: #dcfce7;
   text-decoration: line-through;
 }
 
@@ -1525,8 +1521,8 @@ input:focus {
 }
 
 .matching-player-drag-target {
-  border-color: #fbbf24 !important;
-  background: rgba(251, 191, 36, 0.2) !important;
+  background: #fef3c7 !important;
+  outline: 2px solid #fbbf24;
 }
 
 .matching-player-item:disabled {
