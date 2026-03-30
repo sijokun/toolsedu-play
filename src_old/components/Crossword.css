@@ -1,0 +1,105 @@
+/* ============================================
+   CROSSWORD STYLES
+   ============================================ */
+
+.crossword-render-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.crossword-wrap {
+  width: 100%;
+  flex: 1; /* Take remaining space */
+  display: flex;
+  align-items: center; 
+  justify-content: center;
+  overflow: hidden;
+  padding: 10px 0px;
+  min-height: 0; /* Important for flex child with overflow */
+}
+
+.crossword-warning-text {
+  text-align: center;
+  font-size: 11px;
+  color: #666;
+  font-style: italic;
+  padding: 4px;
+}
+
+.crossword-board {
+  display: grid;
+  background: transparent;
+}
+
+.crossword-cell {
+  background: transparent;
+  display: flex;
+  box-sizing: border-box;
+  position: relative; /* Anchor for pseudo-elements */
+}
+
+/* Standard Inner Borders */
+.crossword-cell.has-top-border {
+  border-top: 1px solid black;
+}
+.crossword-cell.has-left-border {
+  border-left: 1px solid black;
+}
+
+/* Pseudo-element Outer Borders for alignment */
+.crossword-cell.has-right-border::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  right: -1px; /* Outside alignment */
+  width: 1px;
+  background: black;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.crossword-cell.has-bottom-border::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  bottom: -1px; /* Outside alignment */
+  height: 1px;
+  background: black;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.crossword-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  text-align: center;
+  text-transform: uppercase;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  font-weight: bold;
+}
+
+.crossword-cell.highlight {
+  background: #fff2bd;
+  border-radius: 0;
+}
+
+.crossword-cell.highlight .crossword-input {
+  background: #fff2bd;
+  border-radius: 0;
+
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
